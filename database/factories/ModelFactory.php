@@ -1,6 +1,6 @@
 <?php
 
-namespace VendorName\Skeleton\Database\Factories;
+namespace HCart\LaravelMultiCart\Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
 

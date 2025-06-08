@@ -1,12 +1,12 @@
 <?php
 
-namespace VendorName\Skeleton\Commands;
+namespace HCart\LaravelMultiCart\Commands;
 
 use Illuminate\Console\Command;
 
-class SkeletonCommand extends Command
+class LaravelMultiCartCommand extends Command
 {
-    public $signature = 'skeleton';
+    public $signature = 'laravel-multi-cart';
 
     public $description = 'My command';
 
