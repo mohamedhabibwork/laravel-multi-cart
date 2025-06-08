@@ -4,7 +4,11 @@
     "keywords": [
         "HCart",
         "laravel",
-        "laravel-multi-cart"
+        "laravel-multi-cart",
+        "shopping-cart",
+        "cart",
+        "ecommerce",
+        "multi-cart"
     ],
     "homepage": "https://github.com/hcart/laravel-multi-cart",
     "license": "MIT",
@@ -18,7 +22,13 @@
     "require": {
         "php": "^8.4 || ^8.3 || 8.2",
         "spatie/laravel-package-tools": "^1.16",
-        "illuminate/contracts": "^10.0||^11.0||^12.0"
+        "illuminate/contracts": "^10.0||^11.0||^12.0",
+        "illuminate/support": "^10.0||^11.0||^12.0",
+        "illuminate/database": "^10.0||^11.0||^12.0",
+        "illuminate/cache": "^10.0||^11.0||^12.0",
+        "illuminate/session": "^10.0||^11.0||^12.0",
+        "illuminate/redis": "^10.0||^11.0||^12.0",
+        "illuminate/filesystem": "^10.0||^11.0||^12.0"
     },
     "require-dev": {
         "laravel/pint": "^1.14",

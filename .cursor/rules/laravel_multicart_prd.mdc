@@ -1,0 +1,969 @@
+---
+description:
+globs:
+alwaysApply: true
+---
+## 7. Service Provider Registration
+
+### 7.1# Laravel Multi-Cart Package - Product Requirements Document
+
+## 1. Executive Summary
+
+### 1.1 Project Overview
+The Laravel Multi-Cart package is a flexible, extensible shopping cart solution for Laravel applications that supports multiple cart instances with configurable storage providers. Built for Laravel v12+ and PHP 8.2+, it leverages modern Laravel features including polymorphic relationships and JSONB configuration storage.
+
+### 1.2 Key Features
+- Multiple cart instances with unique naming
+- Configurable storage providers (cache, database, session, Redis, file)
+- Polymorphic relationships for flexible item management
+- JSONB configuration storage for enhanced flexibility
+- Soft delete support with `deleted_at` timestamps
+- Type-safe implementation with modern PHP features
+- Comprehensive event system
+- Built-in validation and error handling
+
+## 2. Technical Requirements
+
+### 2.1 System Requirements
+- **Laravel Framework**: v12.0+
+- **PHP Version**: 8.2+
+- **Database**: MySQL 8.0+, PostgreSQL 13+, SQLite 3.35+
+- **Cache Drivers**: Redis, Memcached, File, Database
+- **Session Drivers**: File, Cookie, Database, APC, Memcached, Redis
+
+### 2.2 Dependencies
+```json
+{
+    "php": "^8.2",
+    "laravel/framework": "^12.0",
+    "illuminate/support": "^12.0",
+    "illuminate/database": "^12.0",
+    "illuminate/cache": "^12.0"
+}
+```
+
+## 3. Architecture Design
+
+### 3.1 Package Structure
+```
+src/
+├── Contracts/
+│   ├── CartInterface.php
+│   ├── CartProviderInterface.php
+│   ├── CartItemInterface.php
+│   └── CartConfigInterface.php
+├── Models/
+│   ├── Cart.php
+│   └── CartItem.php
+├── Traits/
+│   ├── HasCarts.php
+│   └── Cartable.php
+├── Config/
+│   └── LaravelMultiCartConfig.php
+├── Providers/
+│   ├── CacheCartProvider.php
+│   ├── DatabaseCartProvider.php
+│   ├── SessionCartProvider.php
+│   ├── RedisCartProvider.php
+│   └── FileCartProvider.php
+├── Services/
+│   ├── CartManager.php
+│   ├── CartService.php
+│   └── ConfigurationService.php
+├── Events/
+│   ├── CartCreated.php
+│   ├── CartUpdated.php
+│   ├── CartDeleted.php
+│   ├── ItemAdded.php
+│   ├── ItemUpdated.php
+│   └── ItemRemoved.php
+├── Exceptions/
+│   ├── CartNotFoundException.php
+│   ├── CartExistsException.php
+│   ├── InvalidCartProviderException.php
+│   └── InvalidConfigurationException.php
+├── Facades/
+│   └── LaravelMultiCart.php
+├── Commands/
+│   ├── CartCleanupCommand.php
+│   ├── CartMigrateProviderCommand.php
+│   └── PublishMigrationsCommand.php
+└── LaravelMultiCartServiceProvider.php
+```
+
+### 3.2 Database Schema
+
+#### 3.2.1 Laravel Migrations
+
+##### Create Carts Table Migration
+```php
+<?php
+// database/migrations/xxxx_xx_xx_create_carts_table.php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('carts', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->json('config')->default('{}');
+            $table->unsignedBigInteger('user_id')->nullable();
+            $table->string('session_id')->nullable();
+            $table->timestamp('expires_at')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+            $table->index(['name']);
+            $table->index(['user_id']);
+            $table->index(['session_id']);
+            $table->index(['deleted_at']);
+            $table->index(['expires_at']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('carts');
+    }
+};
+```
+
+##### Create Cart Items Table Migration
+```php
+<?php
+// database/migrations/xxxx_xx_xx_create_cart_items_table.php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('cart_items', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedBigInteger('cart_id');
+            $table->unsignedBigInteger('cartable_id');
+            $table->string('cartable_type');
+            $table->unsignedInteger('quantity')->default(1);
+            $table->decimal('price', 10, 2)->default(0.00);
+            $table->json('attributes')->default('{}');
+            $table->timestamps();
+
+            $table->foreign('cart_id')->references('id')->on('carts')->onDelete('cascade');
+            $table->index(['cart_id']);
+            $table->index(['cartable_id', 'cartable_type']);
+            $table->unique(['cart_id', 'cartable_id', 'cartable_type'], 'unique_cart_item');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('cart_items');
+    }
+};
+```
+
+## 4. Core Components
+
+### 4.1 Cart Configuration Interface
+```php
+<?php
+
+namespace HCart\LaravelMultiCart\Contracts;
+
+interface CartConfigInterface
+{
+    public function getCartModel(): string;
+    public function getCartItemModel(): string;
+    public function getUniqueItemCallback(): ?callable;
+    public function getTaxRate(): float;
+    public function getCurrency(): string;
+    public function getDefaultProvider(): string;
+    public function shouldPreventDuplicates(): bool;
+    public function getItemUpdateCallback(): ?callable;
+    public function getItemRemoveCallback(): ?callable;
+}
+```
+
+### 4.2 Default Cart Configuration
+```php
+<?php
+
+namespace HCart\LaravelMultiCart\Config;
+
+use HCart\LaravelMultiCart\Contracts\CartConfigInterface;
+use HCart\LaravelMultiCart\Models\Cart;
+use HCart\LaravelMultiCart\Models\CartItem;
+
+class LaravelMultiCartConfig implements CartConfigInterface
+{
+    protected array $config;
+
+    public function __construct(array $config = [])
+    {
+        $this->config = array_merge($this->getDefaultConfig(), $config);
+    }
+
+    public function getCartModel(): string
+    {
+        return $this->config['models']['cart'] ?? Cart::class;
+    }
+
+    public function getCartItemModel(): string
+    {
+        return $this->config['models']['cart_item'] ?? CartItem::class;
+    }
+
+    public function getUniqueItemCallback(): ?callable
+    {
+        return $this->config['callbacks']['unique_item'] ?? $this->getDefaultUniqueCallback();
+    }
+
+    public function getTaxRate(): float
+    {
+        return (float) ($this->config['tax_rate'] ?? 0.0);
+    }
+
+    public function getCurrency(): string
+    {
+        return $this->config['currency'] ?? 'USD';
+    }
+
+    public function getDefaultProvider(): string
+    {
+        return $this->config['default_provider'] ?? 'session';
+    }
+
+    public function shouldPreventDuplicates(): bool
+    {
+        return $this->config['prevent_duplicates'] ?? true;
+    }
+
+    public function getItemUpdateCallback(): ?callable
+    {
+        return $this->config['callbacks']['item_update'] ?? null;
+    }
+
+    public function getItemRemoveCallback(): ?callable
+    {
+        return $this->config['callbacks']['item_remove'] ?? null;
+    }
+
+    protected function getDefaultConfig(): array
+    {
+        return [
+            'models' => [
+                'cart' => Cart::class,
+                'cart_item' => CartItem::class,
+            ],
+            'callbacks' => [
+                'unique_item' => null,
+                'item_update' => null,
+                'item_remove' => null,
+            ],
+            'tax_rate' => 0.0,
+            'currency' => 'USD',
+            'default_provider' => 'session',
+            'prevent_duplicates' => true,
+        ];
+    }
+
+    protected function getDefaultUniqueCallback(): callable
+    {
+        return function ($cartableId, $cartableType, $attributes = []) {
+            // Default: items are unique by model ID and type only
+            return md5($cartableId . $cartableType);
+        };
+    }
+
+    public function setConfig(array $config): self
+    {
+        $this->config = array_merge($this->config, $config);
+        return $this;
+    }
+
+    public function getConfig(string $key = null)
+    {
+        if ($key === null) {
+            return $this->config;
+        }
+
+        return data_get($this->config, $key);
+    }
+}
+```
+
+### 4.3 Cart Owner Trait
+```php
+<?php
+
+namespace HCart\LaravelMultiCart\Traits;
+
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use HCart\LaravelMultiCart\Facades\LaravelMultiCart;
+
+trait HasCarts
+{
+    public function carts(): HasMany
+    {
+        $cartModel = app('LaravelMultiCart.config')->getCartModel();
+        return $this->hasMany($cartModel, 'user_id');
+    }
+
+    public function getCart(string $name, string $provider = null): \HCart\LaravelMultiCart\Services\CartService
+    {
+        return LaravelMultiCart::cart($name, $provider)->forUser($this);
+    }
+
+    public function createCart(string $name, array $config = [], string $provider = null): \HCart\LaravelMultiCart\Services\CartService
+    {
+        return LaravelMultiCart::create($name, $config, $provider)->forUser($this);
+    }
+
+    public function deleteCart(string $name): bool
+    {
+        return LaravelMultiCart::cart($name)->delete();
+    }
+
+    public function getCartNames(): array
+    {
+        return $this->carts()->pluck('name')->toArray();
+    }
+
+    public function hasCart(string $name): bool
+    {
+        return $this->carts()->where('name', $name)->exists();
+    }
+}
+```
+
+### 4.4 Cartable Trait
+```php
+<?php
+
+namespace HCart\LaravelMultiCart\Traits;
+
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+
+trait Cartable
+{
+    public function cartItems(): MorphMany
+    {
+        $cartItemModel = app('LaravelMultiCart.config')->getCartItemModel();
+        return $this->morphMany($cartItemModel, 'cartable');
+    }
+
+    public function isInCart(string $cartName = null): bool
+    {
+        $query = $this->cartItems();
+
+        if ($cartName) {
+            $cartModel = app('LaravelMultiCart.config')->getCartModel();
+            $query->whereHas('cart', function ($q) use ($cartName, $cartModel) {
+                $q->where('name', $cartName);
+            });
+        }
+
+        return $query->exists();
+    }
+
+    public function getCartQuantity(string $cartName = null): int
+    {
+        $query = $this->cartItems();
+
+        if ($cartName) {
+            $cartModel = app('LaravelMultiCart.config')->getCartModel();
+            $query->whereHas('cart', function ($q) use ($cartName, $cartModel) {
+                $q->where('name', $cartName);
+            });
+        }
+
+        return $query->sum('quantity');
+    }
+
+    public function removeFromCart(string $cartName = null): bool
+    {
+        $query = $this->cartItems();
+
+        if ($cartName) {
+            $cartModel = app('LaravelMultiCart.config')->getCartModel();
+            $query->whereHas('cart', function ($q) use ($cartName, $cartModel) {
+                $q->where('name', $cartName);
+            });
+        }
+
+        return $query->delete() > 0;
+    }
+
+    public function getCartPrice(): float
+    {
+        return (float) $this->price ?? 0.0;
+    }
+
+    public function getCartName(): string
+    {
+        return $this->name ?? $this->title ?? (string) $this->id;
+    }
+
+    public function getCartAttributes(): array
+    {
+        return [];
+    }
+}
+```
+
+### 4.5 Cart Model
+```php
+<?php
+
+namespace HCart\LaravelMultiCart\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+
+class Cart extends Model
+{
+    use SoftDeletes;
+
+    protected $fillable = [
+        'name',
+        'config',
+        'user_id',
+        'session_id',
+        'expires_at'
+    ];
+
+    protected $casts = [
+        'config' => 'array',
+        'expires_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+        'deleted_at' => 'datetime'
+    ];
+
+    public function items(): HasMany
+    {
+        $cartItemModel = app('LaravelMultiCart.config')->getCartItemModel();
+        return $this->hasMany($cartItemModel);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(config('auth.providers.users.model'));
+    }
+
+    protected function config(): Attribute
+    {
+        return Attribute::make(
+            get: fn (?string $value) => $value ? json_decode($value, true) : [],
+            set: fn (array $value) => json_encode($value)
+        );
+    }
+
+    public function getConfigValue(string $key, $default = null)
+    {
+        return data_get($this->config, $key, $default);
+    }
+
+    public function setConfigValue(string $key, $value): void
+    {
+        $config = $this->config;
+        data_set($config, $key, $value);
+        $this->config = $config;
+    }
+
+    public function isExpired(): bool
+    {
+        return $this->expires_at && $this->expires_at->isPast();
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+        });
+    }
+
+    public function scopeForUser($query, $userId)
+    {
+        return $query->where('user_id', $userId);
+    }
+
+    public function scopeForSession($query, string $sessionId)
+    {
+        return $query->where('session_id', $sessionId);
+    }
+}
+```
+
+### 4.6 Cart Item Model
+```php
+<?php
+
+namespace HCart\LaravelMultiCart\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
+
+class CartItem extends Model
+{
+    protected $fillable = [
+        'cart_id',
+        'cartable_id',
+        'cartable_type',
+        'quantity',
+        'price',
+        'attributes'
+    ];
+
+    protected $casts = [
+        'quantity' => 'integer',
+        'price' => 'decimal:2',
+        'attributes' => 'array',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime'
+    ];
+
+    public function cart(): BelongsTo
+    {
+        $cartModel = app('LaravelMultiCart.config')->getCartModel();
+        return $this->belongsTo($cartModel);
+    }
+
+    public function cartable(): MorphTo
+    {
+        return $this->morphTo();
+    }
+
+    public function getUniqueKey(): string
+    {
+        $callback = app('LaravelMultiCart.config')->getUniqueItemCallback();
+
+        if ($callback) {
+            return $callback($this->cartable_id, $this->cartable_type, $this->attributes);
+        }
+
+        return md5($this->cartable_id . $this->cartable_type);
+    }
+
+    public function getTotal(): float
+    {
+        return (float) ($this->price * $this->quantity);
+    }
+
+    public function getAttribute(string $key, $default = null)
+    {
+        return data_get($this->attributes, $key, $default);
+    }
+
+    public function setAttribute(string $key, $value): void
+    {
+        $attributes = $this->attributes;
+        data_set($attributes, $key, $value);
+        $this->attributes = $attributes;
+    }
+
+    public function hasAttribute(string $key): bool
+    {
+        return data_get($this->attributes, $key) !== null;
+    }
+
+    public function scopeByCartable($query, $cartableId, string $cartableType)
+    {
+        return $query->where('cartable_id', $cartableId)
+                    ->where('cartable_type', $cartableType);
+    }
+}
+```
+
+## 5. Provider System
+
+### 5.1 Cart Provider Interface
+```php
+<?php
+
+namespace HCart\LaravelMultiCart\Contracts;
+
+interface CartProviderInterface
+{
+    public function get(string $cartName): ?array;
+    public function put(string $cartName, array $data, int $ttl = null): bool;
+    public function forget(string $cartName): bool;
+    public function flush(): bool;
+    public function exists(string $cartName): bool;
+}
+```
+
+### 5.2 Provider Configuration
+```php
+// config/LaravelMultiCart.php
+return [
+    'default' => env('LaravelMultiCart_PROVIDER', 'session'),
+
+    // Custom models
+    'models' => [
+        'cart' => \HCart\LaravelMultiCart\Models\Cart::class,
+        'cart_item' => \HCart\LaravelMultiCart\Models\CartItem::class,
+    ],
+
+    // Configuration class
+    'config_class' => \HCart\LaravelMultiCart\Config\LaravelMultiCartConfig::class,
+
+    // Callbacks for item handling
+    'callbacks' => [
+        // Callback to determine item uniqueness
+        'unique_item' => null, // function($cartableId, $cartableType, $attributes) { return 'unique_key'; }
+
+        // Callback when item is updated
+        'item_update' => null, // function($cartItem, $oldData, $newData) { /* custom logic */ }
+
+        // Callback when item is removed
+        'item_remove' => null, // function($cartItem) { /* custom logic */ }
+    ],
+
+    // Cart behavior
+    'prevent_duplicates' => true,
+    'tax_rate' => env('LaravelMultiCart_TAX_RATE', 0.0),
+    'currency' => env('LaravelMultiCart_CURRENCY', 'USD'),
+
+    'providers' => [
+        'session' => [
+            'driver' => 'session',
+            'prefix' => 'LaravelMultiCart_'
+        ],
+
+        'cache' => [
+            'driver' => 'cache',
+            'store' => env('CACHE_DRIVER', 'file'),
+            'prefix' => 'LaravelMultiCart_',
+            'ttl' => 3600
+        ],
+
+        'database' => [
+            'driver' => 'database',
+            'connection' => env('DB_CONNECTION', 'mysql'),
+            'soft_deletes' => true
+        ],
+
+        'redis' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_CONNECTION', 'default'),
+            'prefix' => 'LaravelMultiCart_',
+            'ttl' => 3600
+        ],
+
+        'file' => [
+            'driver' => 'file',
+            'path' => storage_path('LaravelMultiCart'),
+            'ttl' => 3600
+        ]
+    ],
+
+    'cleanup' => [
+        'enabled' => true,
+        'schedule' => 'daily',
+        'expire_after' => 168 // hours (7 days)
+    ]
+];
+```
+
+## 6. API Design
+
+### 6.1 Configuration Usage
+```php
+// Using custom configuration class
+$config = new \HCart\LaravelMultiCart\Config\LaravelMultiCartConfig([
+    'models' => [
+        'cart' => \App\Models\CustomCart::class,
+        'cart_item' => \App\Models\CustomCartItem::class,
+    ],
+    'callbacks' => [
+        'unique_item' => function ($cartableId, $cartableType, $attributes) {
+            // Custom uniqueness logic - include size and color in uniqueness
+            $uniqueKey = $cartableId . $cartableType;
+            if (isset($attributes['size'])) {
+                $uniqueKey .= $attributes['size'];
+            }
+            if (isset($attributes['color'])) {
+                $uniqueKey .= $attributes['color'];
+            }
+            return md5($uniqueKey);
+        },
+        'item_update' => function ($cartItem, $oldData, $newData) {
+            // Log item updates
+            \Log::info('Cart item updated', [
+                'cart_id' => $cartItem->cart_id,
+                'item_id' => $cartItem->id,
+                'old_data' => $oldData,
+                'new_data' => $newData
+            ]);
+        }
+    ],
+    'prevent_duplicates' => true,
+    'tax_rate' => 0.08,
+    'currency' => 'EUR'
+]);
+
+// Set configuration globally
+LaravelMultiCart::setConfig($config);
+
+// Or create cart with specific configuration
+$cart = LaravelMultiCart::cart('shopping')->withConfig($config);
+```
+
+### 6.2 Cart Management with Traits
+```php
+// Using HasCarts trait in User model
+class User extends Authenticatable
+{
+    use HasCarts;
+
+    // ... other model code
+}
+
+// User can now manage carts easily
+$user = auth()->user();
+
+// Create a new cart for user
+$cart = $user->createCart('wishlist', ['currency' => 'EUR']);
+
+// Get existing cart
+$shoppingCart = $user->getCart('shopping');
+
+// Check if user has specific cart
+if ($user->hasCart('favorites')) {
+    $favoritesCart = $user->getCart('favorites');
+}
+```
+
+### 6.3 Cartable Items with Trait
+```php
+// Using Cartable trait in Product model
+class Product extends Model
+{
+    use Cartable;
+
+    // ... other model code
+}
+
+// Product can now be easily managed in carts
+$product = Product::find(1);
+
+// Check if product is in any cart
+if ($product->isInCart()) {
+    $quantity = $product->getCartQuantity();
+}
+
+// Check if product is in specific cart
+if ($product->isInCart('wishlist')) {
+    // Product is in wishlist
+}
+
+// Remove product from all carts or specific cart
+$product->removeFromCart(); // From all carts
+$product->removeFromCart('shopping'); // From shopping cart only
+```
+
+### 6.4 Cart Operations with Custom Logic
+```php
+// Create cart with custom unique item callback
+$cart = LaravelMultiCart::cart('shopping');
+
+// Add items - uniqueness determined by callback
+$cart->add($product, 2, ['size' => 'large', 'color' => 'red']);
+$cart->add($product, 1, ['size' => 'medium', 'color' => 'red']); // Different item due to size
+
+// Update items with callbacks
+$cart->updateItem($itemId, ['quantity' => 5]); // Triggers item_update callback
+
+// Remove items with callbacks
+$cart->removeItem($itemId); // Triggers item_remove callback
+```
+
+### 6.5 Configuration Management
+```php
+// Runtime configuration changes
+$cart->getConfig()->setConfig([
+    'tax_rate' => 0.10,
+    'currency' => 'GBP'
+]);
+
+// Get specific configuration values
+$taxRate = $cart->getConfig()->getTaxRate();
+$currency = $cart->getConfig()->getCurrency();
+
+// Use custom models
+$customCartModel = $cart->getConfig()->getCartModel();
+$customItemModel = $cart->getConfig()->getCartItemModel();
+```
+
+## 7. Event System
+
+### 7.1 Cart Events
+- `CartCreated`: Fired when a new cart is created
+- `CartUpdated`: Fired when cart data is modified
+- `CartDeleted`: Fired when a cart is soft deleted
+- `CartRestored`: Fired when a soft deleted cart is restored
+
+### 7.2 Item Events
+- `ItemAdded`: Fired when an item is added to cart
+- `ItemUpdated`: Fired when cart item is modified
+- `ItemRemoved`: Fired when an item is removed from cart
+
+## 8. Validation Rules
+
+### 8.1 Cart Validation
+```php
+$rules = [
+    'name' => 'required|string|max:255|unique:carts,name',
+    'provider' => 'required|string|in:session,cache,database,redis,file',
+    'config' => 'sometimes|array',
+    'user_id' => 'sometimes|exists:users,id',
+    'expires_at' => 'sometimes|date|after:now'
+];
+```
+
+### 8.2 Item Validation
+```php
+$rules = [
+    'cartable_id' => 'required|integer',
+    'cartable_type' => 'required|string',
+    'quantity' => 'required|integer|min:1',
+    'price' => 'required|numeric|min:0',
+    'attributes' => 'sometimes|array'
+];
+```
+
+## 9. Performance Considerations
+
+### 9.1 Caching Strategy
+- Implement intelligent caching for database provider
+- Use Redis for high-performance scenarios
+- Lazy loading for cart items and relationships
+- Query optimization with proper indexing
+
+### 9.2 Memory Management
+- Implement item chunking for large carts
+- Use generators for item iteration
+- Optimize JSONB queries for configuration data
+
+## 10. Security Features
+
+### 10.1 Access Control
+- Cart ownership validation
+- Session-based cart protection
+- User authentication integration
+- CSRF protection for cart operations
+
+### 10.2 Data Validation
+- Input sanitization for all cart operations
+- Price validation and formatting
+- Quantity limits and validation
+- Configuration schema validation
+
+## 11. Testing Strategy
+
+### 11.1 Unit Tests
+- Cart model operations
+- Provider functionality
+- Event dispatching
+- Configuration management
+
+### 11.2 Integration Tests
+- Database provider operations
+- Cache provider functionality
+- Session provider behavior
+- Multi-provider scenarios
+
+### 11.3 Feature Tests
+- Complete cart workflows
+- API endpoint testing
+- Event listener verification
+- Performance benchmarking
+
+## 12. Documentation Requirements
+
+### 12.1 Installation Guide
+- Composer installation instructions
+- Configuration publishing
+- Database migration steps
+- Provider setup guides
+
+### 12.2 Usage Documentation
+- Basic cart operations
+- Advanced configuration
+- Event handling examples
+- Provider customization
+
+### 12.3 API Reference
+- Complete method documentation
+- Parameter descriptions
+- Return value specifications
+- Exception handling
+
+## 13. Migration and Upgrade Path
+
+### 13.1 Data Migration
+- Command for migrating between providers
+- Data integrity validation
+- Rollback procedures
+- Batch processing for large datasets
+
+### 13.2 Version Compatibility
+- Backward compatibility maintenance
+- Deprecation notices
+- Migration guides
+- Breaking change documentation
+
+## 14. Deployment Considerations
+
+### 14.1 Environment Configuration
+- Provider-specific environment variables
+- Database connection optimization
+- Cache configuration recommendations
+- Redis cluster support
+
+### 14.2 Monitoring and Logging
+- Cart operation logging
+- Performance metrics collection
+- Error tracking integration
+- Health check endpoints
+
+## 15. Future Enhancements
+
+### 15.1 Planned Features
+- Cart sharing functionality
+- Export/import capabilities
+- Advanced pricing rules
+- Multi-currency support
+- Bulk operations API
+
+### 15.2 Extension Points
+- Custom provider development
+- Event listener examples
+- Middleware integration
+- Third-party service integration
+
+## 16. Success Metrics
+
+### 16.1 Performance Targets
+- Cart operations under 100ms
+- Database queries optimized (< 5 queries per operation)
+- Memory usage under 10MB for typical cart sizes
+- Support for 10,000+ concurrent carts
+
+### 16.2 Quality Metrics
+- Test coverage above 90%
+- Zero critical security vulnerabilities
+- Documentation completeness score > 85%
+- Community adoption and feedback integration
