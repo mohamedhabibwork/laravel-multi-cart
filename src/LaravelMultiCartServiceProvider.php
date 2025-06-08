@@ -2,9 +2,9 @@
 
 namespace HCart\LaravelMultiCart;
 
+use HCart\LaravelMultiCart\Commands\LaravelMultiCartCommand;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
-use HCart\LaravelMultiCart\Commands\LaravelMultiCartCommand;
 
 class LaravelMultiCartServiceProvider extends PackageServiceProvider
 {

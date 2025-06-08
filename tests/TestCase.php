@@ -2,9 +2,9 @@
 
 namespace HCart\LaravelMultiCart\Tests;
 
+use HCart\LaravelMultiCart\LaravelMultiCartServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Orchestra\Testbench\TestCase as Orchestra;
-use HCart\LaravelMultiCart\LaravelMultiCartServiceProvider;
 
 class TestCase extends Orchestra
 {
