@@ -7,6 +7,7 @@ use HCart\LaravelMultiCart\Contracts\CartConfigInterface;
 use HCart\LaravelMultiCart\Contracts\CartInterface;
 use HCart\LaravelMultiCart\Contracts\ShippableInterface;
 use HCart\LaravelMultiCart\Contracts\TaxableInterface;
+use HCart\LaravelMultiCart\Enums\CartProvider;
 use HCart\LaravelMultiCart\Events\CartCreated;
 use HCart\LaravelMultiCart\Events\CartUpdated;
 use HCart\LaravelMultiCart\Events\ItemAdded;
@@ -17,14 +18,6 @@ use Illuminate\Support\Collection;
 
 class CartService implements CartInterface
 {
-    protected CartManager $manager;
-
-    protected CartConfigInterface $config;
-
-    protected string $name;
-
-    protected string $provider;
-
     protected ?Model $user = null;
 
     protected ?string $sessionId = null;
@@ -33,12 +26,8 @@ class CartService implements CartInterface
 
     protected bool $loaded = false;
 
-    public function __construct(CartManager $manager, CartConfigInterface $config, string $name, string $provider)
+    public function __construct(protected CartManager $manager, protected CartConfigInterface $config, protected string $name, protected string|CartProvider $provider)
     {
-        $this->manager = $manager;
-        $this->config = $config;
-        $this->name = $name;
-        $this->provider = $provider;
         $this->sessionId = session()->getId();
     }
 
@@ -342,7 +331,14 @@ class CartService implements CartInterface
                     $this->syncCartItemsToDatabase();
                 }
 
-                event(new ItemRemoved($this->name, $itemId, $item));
+                event(new ItemRemoved(
+                    $this->name,
+                    $itemId,
+                    $item,
+                    $item['cartable_id'] ?? null,
+                    $item['cartable_type'] ?? '',
+                    $item
+                ));
 
                 return true;
             }
@@ -613,15 +609,107 @@ class CartService implements CartInterface
     /**
      * Convert cart to a different provider
      */
-    public function convertToProvider(string $newProvider): CartService
+    public function convertToProvider(string|CartProvider $newProvider, array $options = []): CartService
     {
-        if ($newProvider === $this->provider) {
+        $newProviderString = $newProvider instanceof CartProvider ? $newProvider->value : $newProvider;
+
+        if ($newProviderString === $this->provider) {
             return $this;
         }
 
         $this->loadCart();
 
-        // Create new cart with same name but different provider
+        try {
+            $newProviderEnum = CartProvider::fromString($newProviderString);
+        } catch (\ValueError $e) {
+            throw new \HCart\LaravelMultiCart\Exceptions\InvalidCartProviderException($newProviderString);
+        }
+
+        // Handle conversion based on target provider type
+        return match ($newProviderEnum) {
+            CartProvider::DATABASE => $this->convertToDatabase($options),
+            default => $this->convertToStatelessProvider($newProviderString, $options),
+        };
+    }
+
+    /**
+     * Convert cart to database provider with merge options
+     */
+    private function convertToDatabase(array $options = []): CartService
+    {
+        $mergeWithExisting = $options['merge_with_existing'] ?? false;
+        $targetCartName = $options['target_cart_name'] ?? null;
+        $mergeStrategy = $options['merge_strategy'] ?? 'replace'; // 'replace', 'merge', 'skip'
+
+        $newCart = $this->manager->cart($this->name, CartProvider::DATABASE->value);
+
+        // If we want to merge with existing cart and a target cart is specified
+        if ($mergeWithExisting && $targetCartName) {
+            $targetCart = $this->manager->cart($targetCartName, CartProvider::DATABASE->value);
+
+            if ($targetCart->exists()) {
+                // Force load target cart data by checking count
+                $targetCart->count();
+
+                // Merge items based on strategy
+                $this->mergeCartItems($targetCart, $mergeStrategy);
+
+                // Use the target cart as the new cart
+                $newCart = $targetCart;
+            }
+        } else {
+            // If cart exists in database provider, handle based on merge strategy
+            if ($newCart->exists()) {
+                if ($mergeStrategy === 'merge') {
+                    // Merge with existing cart
+                    $this->mergeCartItems($newCart, 'merge');
+                } elseif ($mergeStrategy === 'skip') {
+                    // Keep existing cart, don't convert
+                    return $newCart;
+                } else {
+                    // Default: replace (clear existing)
+                    $newCart->clear();
+                }
+            }
+        }
+
+        // Copy items if we haven't merged
+        if (! $mergeWithExisting || ! $targetCartName) {
+            foreach ($this->cartData['items'] as $item) {
+                $cartableModel = $item['cartable_type'];
+                $cartable = $cartableModel::find($item['cartable_id']);
+
+                if ($cartable) {
+                    $newCart->add($cartable, $item['quantity'], $item['attributes']);
+                }
+            }
+        }
+
+        // Copy configuration
+        if (! empty($this->cartData['config'])) {
+            $newCart->setConfig($this->cartData['config']);
+        }
+
+        // Set user if present (database provider supports user association)
+        if ($this->user) {
+            $newCart->forUser($this->user);
+        }
+
+        if ($this->sessionId) {
+            $newCart->forSession($this->sessionId);
+        }
+
+        // Delete from old provider
+        $this->delete();
+
+        return $newCart;
+    }
+
+    /**
+     * Convert cart to stateless provider (cache, session, redis, file)
+     */
+    private function convertToStatelessProvider(string $newProvider, array $options = []): CartService
+    {
         $newCart = $this->manager->cart($this->name, $newProvider);
 
         // If the cart exists in the new provider, clear it first
@@ -644,11 +732,8 @@ class CartService implements CartInterface
             $newCart->setConfig($this->cartData['config']);
         }
 
-        // Set user if present
-        if ($this->user) {
-            $newCart->forUser($this->user);
-        }
-
+        // For stateless providers, don't set user ID/type automatically
+        // Only set session if present
         if ($this->sessionId) {
             $newCart->forSession($this->sessionId);
         }
@@ -657,6 +742,47 @@ class CartService implements CartInterface
         $this->delete();
 
         return $newCart;
+    }
+
+    /**
+     * Merge items from current cart into target cart
+     */
+    private function mergeCartItems(CartService $targetCart, string $mergeStrategy): void
+    {
+        foreach ($this->cartData['items'] as $item) {
+            $cartableModel = $item['cartable_type'];
+            $cartable = $cartableModel::find($item['cartable_id']);
+
+            if (! $cartable) {
+                continue;
+            }
+
+            $existingQuantity = $targetCart->quantity($cartable);
+
+            if ($existingQuantity > 0) {
+                // Item exists in target cart
+                switch ($mergeStrategy) {
+                    case 'merge':
+                        // Add quantities together
+                        $targetCart->update($cartable->getKey(), [
+                            'quantity' => $existingQuantity + $item['quantity'],
+                        ]);
+                        break;
+                    case 'replace':
+                        // Replace with current cart's quantity
+                        $targetCart->update($cartable->getKey(), [
+                            'quantity' => $item['quantity'],
+                        ]);
+                        break;
+                    case 'skip':
+                        // Keep existing quantity, don't change
+                        break;
+                }
+            } else {
+                // Item doesn't exist in target cart, add it
+                $targetCart->add($cartable, $item['quantity'], $item['attributes']);
+            }
+        }
     }
 
     /**
@@ -948,6 +1074,56 @@ class CartService implements CartInterface
     public function getProvider(): string
     {
         return $this->provider;
+    }
+
+    /**
+     * Get provider enum instance
+     */
+    public function getProviderEnum(): CartProvider
+    {
+        return CartProvider::fromString($this->provider);
+    }
+
+    /**
+     * Get available carts for merging (database provider only)
+     */
+    public function getAvailableCartsForMerging(): array
+    {
+        if ($this->provider !== CartProvider::DATABASE->value) {
+            return [];
+        }
+
+        if (! $this->user) {
+            return [];
+        }
+
+        // Get all carts for this user from database
+        $cartModel = $this->config->getCartModel();
+        $carts = $cartModel::where('user_id', $this->user->getKey())
+            ->where('user_type', get_class($this->user))
+            ->where('name', '!=', $this->name)
+            ->get(['name', 'id', 'created_at', 'updated_at'])
+            ->toArray();
+
+        return $carts;
+    }
+
+    /**
+     * Get cart summary (items count and total)
+     */
+    public function getSummary(): array
+    {
+        $this->loadCart();
+
+        return [
+            'name' => $this->name,
+            'provider' => $this->provider,
+            'items_count' => $this->count(),
+            'total_amount' => $this->total(),
+            'subtotal' => $this->subtotal(),
+            'created_at' => $this->cartData['created_at'] ?? null,
+            'updated_at' => $this->cartData['updated_at'] ?? null,
+        ];
     }
 
     /**

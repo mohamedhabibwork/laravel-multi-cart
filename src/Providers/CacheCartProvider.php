@@ -56,6 +56,13 @@ class CacheCartProvider implements CartProviderInterface
         return $this->cache->store($this->store)->has($this->getKey($cartName));
     }
 
+    public function getAllNames(): array
+    {
+        // Note: This implementation is limited as most cache stores don't support key listing
+        // This is a basic implementation that may not work with all cache drivers
+        return [];
+    }
+
     protected function getKey(string $cartName): string
     {
         return $this->prefix.$cartName;

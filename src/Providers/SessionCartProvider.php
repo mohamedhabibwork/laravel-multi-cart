@@ -54,6 +54,20 @@ class SessionCartProvider implements CartProviderInterface
         return $this->session->has($this->getKey($cartName));
     }
 
+    public function getAllNames(): array
+    {
+        $keys = array_keys($this->session->all());
+        $cartNames = [];
+
+        foreach ($keys as $key) {
+            if (str_starts_with($key, $this->prefix)) {
+                $cartNames[] = substr($key, strlen($this->prefix));
+            }
+        }
+
+        return $cartNames;
+    }
+
     protected function getKey(string $cartName): string
     {
         return $this->prefix.$cartName;

@@ -9,25 +9,12 @@ class ItemRemoved
 {
     use Dispatchable, SerializesModels;
 
-    public string $cartName;
-
-    public string|int $itemId;
-
-    public array $itemData;
-
-    public int|string|null $cartableId;
-
-    public string $cartableType;
-
-    public array $removedItemData;
-
-    public function __construct(string $cartName, string|int $itemId, array $itemData)
-    {
-        $this->cartName = $cartName;
-        $this->itemId = $itemId;
-        $this->itemData = $itemData;
-        $this->cartableId = $itemData['cartable_id'];
-        $this->cartableType = $itemData['cartable_type'];
-        $this->removedItemData = $itemData;
-    }
+    public function __construct(
+        public string $cartName,
+        public string|int $itemId,
+        public array $itemData,
+        public int|string|null $cartableId,
+        public string $cartableType,
+        public array $removedItemData
+    ) {}
 }

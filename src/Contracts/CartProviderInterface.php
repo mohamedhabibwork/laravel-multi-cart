@@ -13,4 +13,6 @@ interface CartProviderInterface
     public function flush(): bool;
 
     public function exists(string $cartName): bool;
+
+    public function getAllNames(): array;
 }

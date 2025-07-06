@@ -316,12 +316,12 @@ trait HasCarts
         return $this->hasMany($cartModel, 'user_id');
     }
 
-    public function getCart(string $name, string $provider = null): \HCart\LaravelMultiCart\Services\CartService
+    public function getCart(string $name, string|\HCart\LaravelMultiCart\Enums\CartProvider $provider = null): \HCart\LaravelMultiCart\Services\CartService
     {
         return LaravelMultiCart::cart($name, $provider)->forUser($this);
     }
 
-    public function createCart(string $name, array $config = [], string $provider = null): \HCart\LaravelMultiCart\Services\CartService
+    public function createCart(string $name, array $config = [], string|\HCart\LaravelMultiCart\Enums\CartProvider $provider = null): \HCart\LaravelMultiCart\Services\CartService
     {
         return LaravelMultiCart::create($name, $config, $provider)->forUser($this);
     }

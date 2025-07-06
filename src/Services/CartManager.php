@@ -3,26 +3,22 @@
 namespace HCart\LaravelMultiCart\Services;
 
 use HCart\LaravelMultiCart\Contracts\CartProviderInterface;
+use HCart\LaravelMultiCart\Enums\CartProvider;
 use HCart\LaravelMultiCart\Exceptions\InvalidCartProviderException;
 use Illuminate\Foundation\Application;
 
 class CartManager
 {
-    protected Application $app;
-
     protected array $providers = [];
 
     protected array $carts = [];
 
-    public function __construct(Application $app)
-    {
-        $this->app = $app;
-    }
+    public function __construct(protected Application $app) {}
 
     /**
      * Get or create a cart instance
      */
-    public function cart(string $name, ?string $provider = null): CartService
+    public function cart(string $name, string|null|CartProvider $provider = null): CartService
     {
         $provider = $provider ?: $this->getDefaultProvider();
 
@@ -46,7 +42,7 @@ class CartManager
     /**
      * Create a new cart instance
      */
-    public function create(string $name, array $config = [], ?string $provider = null): CartService
+    public function create(string $name, array $config = [], string|null|CartProvider $provider = null): CartService
     {
         $cartService = $this->cart($name, $provider);
         $cartService->setConfig($config);
@@ -57,7 +53,7 @@ class CartManager
     /**
      * Create a new cart instance in strict mode (throws exception if exists)
      */
-    public function createStrict(string $name, array $config = [], ?string $provider = null): CartService
+    public function createStrict(string $name, array $config = [], string|null|CartProvider $provider = null): CartService
     {
         if ($this->exists($name, $provider)) {
             throw new \HCart\LaravelMultiCart\Exceptions\CartExistsException($name, $provider);
@@ -69,7 +65,7 @@ class CartManager
     /**
      * Delete a cart instance
      */
-    public function delete(string $name, ?string $provider = null): bool
+    public function delete(string $name, string|null|CartProvider $provider = null): bool
     {
         $provider = $provider ?: $this->getDefaultProvider();
         $cartProvider = $this->getProvider($provider);
@@ -84,7 +80,7 @@ class CartManager
     /**
      * Check if cart exists
      */
-    public function exists(string $name, ?string $provider = null): bool
+    public function exists(string $name, string|null|CartProvider $provider = null): bool
     {
         $provider = $provider ?: $this->getDefaultProvider();
         $cartProvider = $this->getProvider($provider);
@@ -95,17 +91,18 @@ class CartManager
     /**
      * Get all cart names
      */
-    public function getAllCartNames(?string $provider = null): array
+    public function getAllCartNames(string|null|CartProvider $provider = null): array
     {
-        // This would need provider-specific implementation
-        // For now, return empty array as this is complex for some providers
-        return [];
+        $provider = $provider ?: $this->getDefaultProvider();
+        $cartProvider = $this->getProvider($provider);
+
+        return $cartProvider->getAllNames();
     }
 
     /**
      * Flush all carts from a provider
      */
-    public function flush(?string $provider = null): bool
+    public function flush(string|null|CartProvider $provider = null): bool
     {
         $provider = $provider ?: $this->getDefaultProvider();
         $cartProvider = $this->getProvider($provider);
@@ -121,8 +118,10 @@ class CartManager
     /**
      * Get a cart provider instance
      */
-    public function getProvider(string $name): CartProviderInterface
+    public function getProvider(string|CartProvider $name): CartProviderInterface
     {
+        $name = $name instanceof CartProvider ? $name->value : $name;
+
         if (! isset($this->providers[$name])) {
             $this->providers[$name] = $this->createProvider($name);
         }
@@ -133,39 +132,78 @@ class CartManager
     /**
      * Create a cart provider instance
      */
-    protected function createProvider(string $name): CartProviderInterface
+    protected function createProvider(string|CartProvider $name): CartProviderInterface
     {
+        $name = $name instanceof CartProvider ? $name->value : $name;
         $config = config("laravel-multi-cart.providers.{$name}");
 
         if (! $config) {
             throw new InvalidCartProviderException($name);
         }
 
-        $driver = $config['driver'];
+        $driver = $config['driver'] ?? $name;
 
-        return match ($driver) {
-            'session' => $this->app->make('cart.provider.session', ['config' => $config]),
-            'cache' => $this->app->make('cart.provider.cache', ['config' => $config]),
-            'database' => $this->app->make('cart.provider.database', ['config' => $config]),
-            'redis' => $this->app->make('cart.provider.redis', ['config' => $config]),
-            'file' => $this->app->make('cart.provider.file', ['config' => $config]),
-            default => throw new InvalidCartProviderException($driver)
-        };
+        // Validate driver using enum
+        if (! CartProvider::isValid($driver)) {
+            throw new InvalidCartProviderException($driver);
+        }
+
+        $providerEnum = CartProvider::fromString($driver);
+
+        return $this->app->make("cart.provider.{$providerEnum->value}", ['config' => $config]);
     }
 
     /**
      * Get the default provider name
      */
-    protected function getDefaultProvider(): string
+    protected function getDefaultProvider(): string|CartProvider
     {
-        return config('laravel-multi-cart.default', 'session');
+        return config('laravel-multi-cart.default', CartProvider::SESSION->value);
+    }
+
+    /**
+     * Get all available provider names
+     */
+    public function getAvailableProviders(): array
+    {
+        return CartProvider::getAll();
+    }
+
+    /**
+     * Get provider information
+     */
+    public function getProviderInfo(string|CartProvider $provider): array
+    {
+        $providerEnum = $provider instanceof CartProvider ? $provider : CartProvider::fromString($provider);
+
+        return [
+            'name' => $providerEnum->value,
+            'display_name' => $providerEnum->getDisplayName(),
+            'description' => $providerEnum->getDescription(),
+            'is_stateless' => $providerEnum->isStateless(),
+            'is_stateful' => $providerEnum->isStateful(),
+            'supports_merging' => $providerEnum->supportsMerging(),
+        ];
+    }
+
+    /**
+     * Get information for all available providers
+     */
+    public function getAllProviderInfo(): array
+    {
+        return array_map(
+            fn ($provider) => $this->getProviderInfo($provider),
+            $this->getAvailableProviders()
+        );
     }
 
     /**
      * Generate a unique key for cart instance
      */
-    protected function getCartKey(string $name, string $provider): string
+    protected function getCartKey(string $name, string|CartProvider $provider): string
     {
+        $provider = $provider instanceof CartProvider ? $provider->value : $provider;
+
         return $name.'_'.$provider;
     }
 }

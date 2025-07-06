@@ -121,6 +121,11 @@ class DatabaseCartProvider implements CartProviderInterface
         return $this->getCartQuery()->where('name', $cartName)->exists();
     }
 
+    public function getAllNames(): array
+    {
+        return $this->getCartQuery()->pluck('name')->toArray();
+    }
+
     protected function getCartQuery()
     {
         $cartModel = app('LaravelMultiCart.config')->getCartModel();

@@ -64,6 +64,20 @@ class RedisCartProvider implements CartProviderInterface
         return $this->redis->connection($this->connection)->exists($this->getKey($cartName)) > 0;
     }
 
+    public function getAllNames(): array
+    {
+        $keys = $this->redis->connection($this->connection)->keys($this->prefix.'*');
+        $cartNames = [];
+
+        foreach ($keys as $key) {
+            if (str_starts_with($key, $this->prefix)) {
+                $cartNames[] = substr($key, strlen($this->prefix));
+            }
+        }
+
+        return $cartNames;
+    }
+
     protected function getKey(string $cartName): string
     {
         return $this->prefix.$cartName;

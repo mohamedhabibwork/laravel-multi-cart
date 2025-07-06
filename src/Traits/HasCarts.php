@@ -2,6 +2,7 @@
 
 namespace HCart\LaravelMultiCart\Traits;
 
+use HCart\LaravelMultiCart\Enums\CartProvider;
 use HCart\LaravelMultiCart\Facades\LaravelMultiCart;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
@@ -19,10 +20,10 @@ trait HasCarts
         // If no provider specified, try to find the cart in database first (most reliable for user carts)
         if ($provider === null) {
             if ($this->carts()->where('name', $name)->exists()) {
-                $provider = 'database';
+                $provider = CartProvider::DATABASE;
             } else {
                 // Fall back to default provider
-                $provider = config('laravel-multi-cart.default', 'session');
+                $provider = config('laravel-multi-cart.default', CartProvider::SESSION->value);
             }
         }
 
@@ -32,7 +33,7 @@ trait HasCarts
     public function createCart(string $name, array $config = [], ?string $provider = null): \HCart\LaravelMultiCart\Services\CartService
     {
         // Default to database provider for user carts if no provider specified
-        $provider = $provider ?? 'database';
+        $provider = $provider ?? CartProvider::DATABASE->value;
 
         $cart = LaravelMultiCart::create($name, $config, $provider)->forUser($this);
 
@@ -46,7 +47,7 @@ trait HasCarts
     {
         // For user carts, check database provider first (most reliable)
         if ($this->carts()->where('name', $name)->exists()) {
-            return LaravelMultiCart::cart($name, 'database')->delete();
+            return LaravelMultiCart::cart($name, CartProvider::DATABASE->value)->delete();
         }
 
         // Fall back to default provider
@@ -75,7 +76,7 @@ trait HasCarts
     /**
      * Clone user's cart to a new cart name
      */
-    public function cloneCart(string $originalName, string $newName, ?string $provider = null): \HCart\LaravelMultiCart\Services\CartService
+    public function cloneCart(string $originalName, string $newName, string|null|CartProvider $provider = null): \HCart\LaravelMultiCart\Services\CartService
     {
         $originalCart = $this->getCart($originalName, $provider);
 
@@ -85,10 +86,62 @@ trait HasCarts
     /**
      * Convert user's cart to a different provider
      */
-    public function convertCartToProvider(string $cartName, string $newProvider): \HCart\LaravelMultiCart\Services\CartService
+    public function convertCartToProvider(string $cartName, string|CartProvider $newProvider, array $options = []): \HCart\LaravelMultiCart\Services\CartService
     {
         $cart = $this->getCart($cartName);
 
-        return $cart->convertToProvider($newProvider);
+        return $cart->convertToProvider($newProvider, $options);
+    }
+
+    /**
+     * Convert user's cart to database provider with merge options
+     */
+    public function convertCartToDatabase(string $cartName, array $options = []): \HCart\LaravelMultiCart\Services\CartService
+    {
+        return $this->convertCartToProvider($cartName, CartProvider::DATABASE, $options);
+    }
+
+    /**
+     * Merge two user carts
+     */
+    public function mergeCarts(string $sourceCartName, string $targetCartName, string $mergeStrategy = 'merge'): \HCart\LaravelMultiCart\Services\CartService
+    {
+        $sourceCart = $this->getCart($sourceCartName);
+
+        return $sourceCart->convertToProvider(CartProvider::DATABASE, [
+            'merge_with_existing' => true,
+            'target_cart_name' => $targetCartName,
+            'merge_strategy' => $mergeStrategy,
+        ]);
+    }
+
+    /**
+     * Get available carts for merging for this user
+     */
+    public function getAvailableCartsForMerging(?string $excludeCartName = null): array
+    {
+        $carts = $this->carts()->get(['name', 'id', 'created_at', 'updated_at']);
+
+        if ($excludeCartName) {
+            $carts = $carts->where('name', '!=', $excludeCartName);
+        }
+
+        return $carts->toArray();
+    }
+
+    /**
+     * Get cart summaries for all user carts
+     */
+    public function getCartSummaries(): array
+    {
+        $cartNames = $this->getCartNames();
+        $summaries = [];
+
+        foreach ($cartNames as $cartName) {
+            $cart = $this->getCart($cartName);
+            $summaries[] = $cart->getSummary();
+        }
+
+        return $summaries;
     }
 }

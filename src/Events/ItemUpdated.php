@@ -9,19 +9,10 @@ class ItemUpdated
 {
     use Dispatchable, SerializesModels;
 
-    public string $cartName;
-
-    public string|int $itemId;
-
-    public array $oldData;
-
-    public array $newData;
-
-    public function __construct(string $cartName, string|int $itemId, array $oldData, array $newData)
-    {
-        $this->cartName = $cartName;
-        $this->itemId = $itemId;
-        $this->oldData = $oldData;
-        $this->newData = $newData;
-    }
+    public function __construct(
+        public string $cartName,
+        public string|int $itemId,
+        public array $oldData,
+        public array $newData
+    ) {}
 }

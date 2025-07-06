@@ -1,5 +1,6 @@
 <?php
 
+use HCart\LaravelMultiCart\Enums\CartProvider;
 use HCart\LaravelMultiCart\Facades\LaravelMultiCart;
 use HCart\LaravelMultiCart\Providers\CacheCartProvider;
 use HCart\LaravelMultiCart\Providers\DatabaseCartProvider;
@@ -19,39 +20,39 @@ beforeEach(function () {
 describe('Session Provider', function () {
     it('can create session cart provider', function () {
         $manager = app(CartManager::class);
-        $provider = $manager->getProvider('session');
+        $provider = $manager->getProvider(CartProvider::SESSION->value);
 
         expect($provider)->toBeInstanceOf(SessionCartProvider::class);
     });
 
     it('can store and retrieve cart data in session', function () {
-        $cart = LaravelMultiCart::cart('session_test', 'session');
+        $cart = LaravelMultiCart::cart('session_test', CartProvider::SESSION->value);
         $cart->add($this->product, 2);
 
         expect($cart->count())->toBe(2)
             ->and($cart->has($this->product))->toBeTrue();
 
         // Create new cart instance to test persistence
-        $newCart = LaravelMultiCart::cart('session_test', 'session');
+        $newCart = LaravelMultiCart::cart('session_test', CartProvider::SESSION->value);
         expect($newCart->count())->toBe(2);
     });
 
     it('can delete cart from session', function () {
-        $cart = LaravelMultiCart::cart('session_test', 'session');
+        $cart = LaravelMultiCart::cart('session_test', CartProvider::SESSION->value);
         $cart->add($this->product);
 
         expect($cart->exists())->toBeTrue();
 
         $cart->delete();
 
-        expect(LaravelMultiCart::exists('session_test', 'session'))->toBeFalse();
+        expect(LaravelMultiCart::exists('session_test', CartProvider::SESSION->value))->toBeFalse();
     });
 });
 
 describe('Cache Provider', function () {
     it('can create cache cart provider', function () {
         $manager = app(CartManager::class);
-        $provider = $manager->getProvider('cache');
+        $provider = $manager->getProvider(CartProvider::CACHE->value);
 
         expect($provider)->toBeInstanceOf(CacheCartProvider::class);
     });
@@ -62,7 +63,7 @@ describe('Cache Provider', function () {
 
         // Use unique cart name to avoid interference
         $uniqueId = uniqid();
-        $cart = LaravelMultiCart::cart("cache_test_{$uniqueId}", 'cache');
+        $cart = LaravelMultiCart::cart("cache_test_{$uniqueId}", CartProvider::CACHE->value);
         $cart->add($this->product, 3);
 
         expect($cart->count())->toBe(3)
@@ -70,32 +71,32 @@ describe('Cache Provider', function () {
 
         // Create a new cart manager instance to simulate a fresh request
         $newManager = new CartManager(app());
-        $newCart = $newManager->cart("cache_test_{$uniqueId}", 'cache');
+        $newCart = $newManager->cart("cache_test_{$uniqueId}", CartProvider::CACHE->value);
         expect($newCart->count())->toBe(3);
     });
 
     it('can delete cart from cache', function () {
-        $cart = LaravelMultiCart::cart('cache_test', 'cache');
+        $cart = LaravelMultiCart::cart('cache_test', CartProvider::CACHE->value);
         $cart->add($this->product);
 
         expect($cart->exists())->toBeTrue();
 
         $cart->delete();
 
-        expect(LaravelMultiCart::exists('cache_test', 'cache'))->toBeFalse();
+        expect(LaravelMultiCart::exists('cache_test', CartProvider::CACHE->value))->toBeFalse();
     });
 });
 
 describe('Database Provider', function () {
     it('can create database cart provider', function () {
         $manager = app(CartManager::class);
-        $provider = $manager->getProvider('database');
+        $provider = $manager->getProvider(CartProvider::DATABASE->value);
 
         expect($provider)->toBeInstanceOf(DatabaseCartProvider::class);
     });
 
     it('can store and retrieve cart data in database', function () {
-        $cart = LaravelMultiCart::cart('db_test', 'database');
+        $cart = LaravelMultiCart::cart('db_test', CartProvider::DATABASE->value);
         $cart->add($this->product, 4);
 
         expect($cart->count())->toBe(4)
@@ -107,19 +108,19 @@ describe('Database Provider', function () {
             ->and($dbCart->name)->toBe('db_test');
 
         // Create new cart instance to test persistence
-        $newCart = LaravelMultiCart::cart('db_test', 'database');
+        $newCart = LaravelMultiCart::cart('db_test', CartProvider::DATABASE->value);
         expect($newCart->count())->toBe(4);
     });
 
     it('can soft delete cart from database', function () {
-        $cart = LaravelMultiCart::cart('db_test', 'database');
+        $cart = LaravelMultiCart::cart('db_test', CartProvider::DATABASE->value);
         $cart->add($this->product);
 
         expect($cart->exists())->toBeTrue();
 
         $cart->delete();
 
-        expect(LaravelMultiCart::exists('db_test', 'database'))->toBeFalse();
+        expect(LaravelMultiCart::exists('db_test', CartProvider::DATABASE->value))->toBeFalse();
 
         // Check that cart is soft deleted
         $dbCart = \HCart\LaravelMultiCart\Models\Cart::withTrashed()->where('name', 'db_test')->first();
@@ -133,7 +134,7 @@ describe('Database Provider', function () {
             'email' => 'test@example.com',
         ]);
 
-        $cart = LaravelMultiCart::cart('user_test', 'database')->forUser($user);
+        $cart = LaravelMultiCart::cart('user_test', CartProvider::DATABASE->value)->forUser($user);
         $cart->add($this->product);
 
         $dbCart = \HCart\LaravelMultiCart\Models\Cart::where('name', 'user_test')->first();
@@ -146,7 +147,7 @@ describe('Database Provider', function () {
 describe('File Provider', function () {
     it('can create file cart provider', function () {
         $manager = app(CartManager::class);
-        $provider = $manager->getProvider('file');
+        $provider = $manager->getProvider(CartProvider::FILE->value);
 
         expect($provider)->toBeInstanceOf(FileCartProvider::class);
     });
@@ -154,26 +155,26 @@ describe('File Provider', function () {
     it('can store and retrieve cart data in files', function () {
         // Use unique cart name to avoid interference
         $uniqueId = uniqid();
-        $cart = LaravelMultiCart::cart("file_test_{$uniqueId}", 'file');
+        $cart = LaravelMultiCart::cart("file_test_{$uniqueId}", CartProvider::FILE->value);
         $cart->add($this->product, 5);
 
         expect($cart->count())->toBe(5)
             ->and($cart->has($this->product))->toBeTrue();
 
         // Create new cart instance to test persistence
-        $newCart = LaravelMultiCart::cart("file_test_{$uniqueId}", 'file');
+        $newCart = LaravelMultiCart::cart("file_test_{$uniqueId}", CartProvider::FILE->value);
         expect($newCart->count())->toBe(5);
     });
 
     it('can delete cart file', function () {
-        $cart = LaravelMultiCart::cart('file_test', 'file');
+        $cart = LaravelMultiCart::cart('file_test', CartProvider::FILE->value);
         $cart->add($this->product);
 
         expect($cart->exists())->toBeTrue();
 
         $cart->delete();
 
-        expect(LaravelMultiCart::exists('file_test', 'file'))->toBeFalse();
+        expect(LaravelMultiCart::exists('file_test', CartProvider::FILE->value))->toBeFalse();
     });
 });
 
@@ -184,9 +185,9 @@ describe('Provider Switching', function () {
 
         // Use unique cart names to avoid cart manager caching issues
         $uniqueId = uniqid();
-        $sessionCart = LaravelMultiCart::cart("session_cart_{$uniqueId}", 'session');
-        $dbCart = LaravelMultiCart::cart("db_cart_{$uniqueId}", 'database');
-        $cacheCart = LaravelMultiCart::cart("cache_cart_{$uniqueId}", 'cache');
+        $sessionCart = LaravelMultiCart::cart("session_cart_{$uniqueId}", CartProvider::SESSION->value);
+        $dbCart = LaravelMultiCart::cart("db_cart_{$uniqueId}", CartProvider::DATABASE->value);
+        $cacheCart = LaravelMultiCart::cart("cache_cart_{$uniqueId}", CartProvider::CACHE->value);
 
         $sessionCart->add($this->product, 1);
         $dbCart->add($this->product, 2);
@@ -196,42 +197,42 @@ describe('Provider Switching', function () {
             ->and($dbCart->count())->toBe(2)
             ->and($cacheCart->count())->toBe(3);
 
-        expect($sessionCart->getProvider())->toBe('session')
-            ->and($dbCart->getProvider())->toBe('database')
-            ->and($cacheCart->getProvider())->toBe('cache');
+        expect($sessionCart->getProvider())->toBe(CartProvider::SESSION->value)
+            ->and($dbCart->getProvider())->toBe(CartProvider::DATABASE->value)
+            ->and($cacheCart->getProvider())->toBe(CartProvider::CACHE->value);
     });
 
     it('can create cart with custom configuration', function () {
         $cart = LaravelMultiCart::create('custom', [
             'currency' => 'EUR',
             'tax_rate' => 0.20,
-        ], 'database');
+        ], CartProvider::DATABASE->value);
 
         expect($cart->getConfig())->toBe(['currency' => 'EUR', 'tax_rate' => 0.20])
-            ->and($cart->getProvider())->toBe('database');
+            ->and($cart->getProvider())->toBe(CartProvider::DATABASE->value);
     });
 });
 
 describe('Provider Flushing', function () {
     beforeEach(function () {
         // Create carts in different providers
-        LaravelMultiCart::cart('session1', 'session')->add($this->product);
-        LaravelMultiCart::cart('session2', 'session')->add($this->product);
-        LaravelMultiCart::cart('db1', 'database')->add($this->product);
-        LaravelMultiCart::cart('db2', 'database')->add($this->product);
+        LaravelMultiCart::cart('session1', CartProvider::SESSION->value)->add($this->product);
+        LaravelMultiCart::cart('session2', CartProvider::SESSION->value)->add($this->product);
+        LaravelMultiCart::cart('db1', CartProvider::DATABASE->value)->add($this->product);
+        LaravelMultiCart::cart('db2', CartProvider::DATABASE->value)->add($this->product);
     });
 
     it('can flush all carts from specific provider', function () {
-        expect(LaravelMultiCart::exists('session1', 'session'))->toBeTrue()
-            ->and(LaravelMultiCart::exists('session2', 'session'))->toBeTrue()
-            ->and(LaravelMultiCart::exists('db1', 'database'))->toBeTrue()
-            ->and(LaravelMultiCart::exists('db2', 'database'))->toBeTrue();
+        expect(LaravelMultiCart::exists('session1', CartProvider::SESSION->value))->toBeTrue()
+            ->and(LaravelMultiCart::exists('session2', CartProvider::SESSION->value))->toBeTrue()
+            ->and(LaravelMultiCart::exists('db1', CartProvider::DATABASE->value))->toBeTrue()
+            ->and(LaravelMultiCart::exists('db2', CartProvider::DATABASE->value))->toBeTrue();
 
-        LaravelMultiCart::flush('session');
+        LaravelMultiCart::flush(CartProvider::SESSION->value);
 
-        expect(LaravelMultiCart::exists('session1', 'session'))->toBeFalse()
-            ->and(LaravelMultiCart::exists('session2', 'session'))->toBeFalse()
-            ->and(LaravelMultiCart::exists('db1', 'database'))->toBeTrue()
-            ->and(LaravelMultiCart::exists('db2', 'database'))->toBeTrue();
+        expect(LaravelMultiCart::exists('session1', CartProvider::SESSION->value))->toBeFalse()
+            ->and(LaravelMultiCart::exists('session2', CartProvider::SESSION->value))->toBeFalse()
+            ->and(LaravelMultiCart::exists('db1', CartProvider::DATABASE->value))->toBeTrue()
+            ->and(LaravelMultiCart::exists('db2', CartProvider::DATABASE->value))->toBeTrue();
     });
 });

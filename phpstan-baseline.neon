@@ -22,9 +22,6 @@ parameters:
 			path: src/Models/CartItem.php
 		-
 			message: "#Access to an undefined property#"
-			path: src/Events/ItemAdded.php
-		-
-			message: "#Access to an undefined property#"
 			path: src/Services/TaxCalculator.php
 		
 		# Method calls on models are handled by Eloquent

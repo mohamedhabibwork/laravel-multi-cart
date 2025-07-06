@@ -1,5 +1,6 @@
 <?php
 
+use HCart\LaravelMultiCart\Enums\CartProvider;
 use HCart\LaravelMultiCart\Facades\LaravelMultiCart;
 use HCart\LaravelMultiCart\Models\Cart;
 use HCart\LaravelMultiCart\Tests\Fixtures\Product;
@@ -48,7 +49,7 @@ describe('HasCarts Trait', function () {
     });
 
     it('can get user cart', function () {
-        $cart = $this->user->getCart('shopping', 'database');
+        $cart = $this->user->getCart('shopping', CartProvider::DATABASE->value);
         $cart->add($this->product, 2);
 
         expect($cart->getName())->toBe('shopping')
@@ -61,10 +62,10 @@ describe('HasCarts Trait', function () {
     });
 
     it('can create user cart', function () {
-        $cart = $this->user->createCart('new_cart', ['currency' => 'EUR'], 'database');
+        $cart = $this->user->createCart('new_cart', ['currency' => 'EUR'], CartProvider::DATABASE->value);
 
         expect($cart->getName())->toBe('new_cart')
-            ->and($cart->getProvider())->toBe('database')
+            ->and($cart->getProvider())->toBe(CartProvider::DATABASE->value)
             ->and($cart->getConfig())->toBe(['currency' => 'EUR']);
 
         // Verify cart is in database with user association
@@ -87,9 +88,9 @@ describe('HasCarts Trait', function () {
     });
 
     it('can get cart names', function () {
-        $this->user->createCart('cart1', [], 'database');
-        $this->user->createCart('cart2', [], 'database');
-        $this->user->createCart('cart3', [], 'database');
+        $this->user->createCart('cart1', [], CartProvider::DATABASE->value);
+        $this->user->createCart('cart2', [], CartProvider::DATABASE->value);
+        $this->user->createCart('cart3', [], CartProvider::DATABASE->value);
 
         $cartNames = $this->user->getCartNames();
 
@@ -121,25 +122,25 @@ describe('HasCarts Trait', function () {
     });
 
     it('can convert user cart to different provider', function () {
-        $cart = $this->user->createCart('convertible', [], 'session');
+        $cart = $this->user->createCart('convertible', [], CartProvider::SESSION->value);
         $cart->add($this->product, 2);
 
-        expect($cart->getProvider())->toBe('session');
+        expect($cart->getProvider())->toBe(CartProvider::SESSION->value);
 
-        $convertedCart = $this->user->convertCartToProvider('convertible', 'database');
+        $convertedCart = $this->user->convertCartToProvider('convertible', CartProvider::DATABASE->value);
 
-        expect($convertedCart->getProvider())->toBe('database')
+        expect($convertedCart->getProvider())->toBe(CartProvider::DATABASE->value)
             ->and($convertedCart->count())->toBe(2);
 
         // Original session cart should no longer exist
-        expect(LaravelMultiCart::exists('convertible', 'session'))->toBeFalse()
-            ->and(LaravelMultiCart::exists('convertible', 'database'))->toBeTrue();
+        expect(LaravelMultiCart::exists('convertible', CartProvider::SESSION->value))->toBeFalse()
+            ->and(LaravelMultiCart::exists('convertible', CartProvider::DATABASE->value))->toBeTrue();
     });
 });
 
 describe('Cartable Trait', function () {
     it('has cart items relationship', function () {
-        $cart = LaravelMultiCart::cart('test_cart', 'database');
+        $cart = LaravelMultiCart::cart('test_cart', CartProvider::DATABASE->value);
         $cart->add($this->product, 2);
 
         $cartItems = $this->product->cartItems;
@@ -153,15 +154,15 @@ describe('Cartable Trait', function () {
     it('can check if product is in cart', function () {
         expect($this->product->isInCart())->toBeFalse();
 
-        $cart = LaravelMultiCart::cart('test_cart', 'database');
+        $cart = LaravelMultiCart::cart('test_cart', CartProvider::DATABASE->value);
         $cart->add($this->product);
 
         expect($this->product->isInCart())->toBeTrue();
     });
 
     it('can check if product is in specific cart', function () {
-        $cart1 = LaravelMultiCart::cart('cart1', 'database');
-        $cart2 = LaravelMultiCart::cart('cart2', 'database');
+        $cart1 = LaravelMultiCart::cart('cart1', CartProvider::DATABASE->value);
+        $cart2 = LaravelMultiCart::cart('cart2', CartProvider::DATABASE->value);
 
         $cart1->add($this->product);
 
@@ -171,8 +172,8 @@ describe('Cartable Trait', function () {
     });
 
     it('can get cart quantity', function () {
-        $cart1 = LaravelMultiCart::cart('cart1', 'database');
-        $cart2 = LaravelMultiCart::cart('cart2', 'database');
+        $cart1 = LaravelMultiCart::cart('cart1', CartProvider::DATABASE->value);
+        $cart2 = LaravelMultiCart::cart('cart2', CartProvider::DATABASE->value);
 
         $cart1->add($this->product, 2);
         $cart2->add($this->product, 3);
@@ -183,8 +184,8 @@ describe('Cartable Trait', function () {
     });
 
     it('can remove product from cart', function () {
-        $cart1 = LaravelMultiCart::cart('cart1', 'database');
-        $cart2 = LaravelMultiCart::cart('cart2', 'database');
+        $cart1 = LaravelMultiCart::cart('cart1', CartProvider::DATABASE->value);
+        $cart2 = LaravelMultiCart::cart('cart2', CartProvider::DATABASE->value);
 
         $cart1->add($this->product, 2);
         $cart2->add($this->product, 3);
@@ -229,7 +230,7 @@ describe('Cartable Trait', function () {
             'sku' => 'TEST-002',
         ]);
 
-        $cart = LaravelMultiCart::cart('mixed_cart', 'database');
+        $cart = LaravelMultiCart::cart('mixed_cart', CartProvider::DATABASE->value);
         $cart->add($this->product, 1);
         $cart->add($anotherProduct, 2);
 
@@ -250,7 +251,7 @@ describe('Cartable Trait', function () {
             ],
         ]);
 
-        $cart = LaravelMultiCart::cart('attr_cart', 'database')->withConfig($config);
+        $cart = LaravelMultiCart::cart('attr_cart', CartProvider::DATABASE->value)->withConfig($config);
         $cart->add($this->product, 1, ['size' => 'large', 'color' => 'red']);
         $cart->add($this->product, 2, ['size' => 'medium', 'color' => 'blue']);
 

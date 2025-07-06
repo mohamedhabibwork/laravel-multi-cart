@@ -1,5 +1,6 @@
 <?php
 
+use HCart\LaravelMultiCart\Enums\CartProvider;
 use HCart\LaravelMultiCart\Events\CartCreated;
 use HCart\LaravelMultiCart\Events\ItemAdded;
 use HCart\LaravelMultiCart\Events\ItemRemoved;
@@ -30,7 +31,7 @@ describe('Cart Basic Operations', function () {
 
         expect($cart)->toBeInstanceOf(\HCart\LaravelMultiCart\Services\CartService::class)
             ->and($cart->getName())->toBe('shopping')
-            ->and($cart->getProvider())->toBe('session');
+            ->and($cart->getProvider())->toBe(CartProvider::SESSION->value);
 
         // Access the cart to trigger loading and creation event
         $cart->count();
@@ -170,38 +171,38 @@ describe('Cart Cloning', function () {
     });
 
     it('can clone cart to different provider', function () {
-        $cart = LaravelMultiCart::cart('shopping', 'session');
+        $cart = LaravelMultiCart::cart('shopping', CartProvider::SESSION->value);
         $cart->add($this->product, 2);
 
-        $clonedCart = $cart->clone('shopping_backup', 'database');
+        $clonedCart = $cart->clone('shopping_backup', CartProvider::DATABASE->value);
 
         expect($clonedCart->getName())->toBe('shopping_backup')
-            ->and($clonedCart->getProvider())->toBe('database')
+            ->and($clonedCart->getProvider())->toBe(CartProvider::DATABASE->value)
             ->and($clonedCart->count())->toBe(2);
     });
 });
 
 describe('Cart Provider Conversion', function () {
     it('can convert cart to different provider', function () {
-        $cart = LaravelMultiCart::cart('shopping', 'session');
+        $cart = LaravelMultiCart::cart('shopping', CartProvider::SESSION->value);
         $cart->add($this->product, 2);
         $cart->setConfig(['currency' => 'USD']);
 
-        $convertedCart = $cart->convertToProvider('database');
+        $convertedCart = $cart->convertToProvider(CartProvider::DATABASE->value);
 
-        expect($convertedCart->getProvider())->toBe('database')
+        expect($convertedCart->getProvider())->toBe(CartProvider::DATABASE->value)
             ->and($convertedCart->getName())->toBe('shopping')
             ->and($convertedCart->count())->toBe(2)
             ->and($convertedCart->getConfig())->toBe(['currency' => 'USD']);
 
         // Original cart should no longer exist in session provider
-        $originalExists = LaravelMultiCart::exists('shopping', 'session');
+        $originalExists = LaravelMultiCart::exists('shopping', CartProvider::SESSION->value);
         expect($originalExists)->toBeFalse();
     });
 
     it('returns same cart if converting to same provider', function () {
-        $cart = LaravelMultiCart::cart('shopping', 'session');
-        $convertedCart = $cart->convertToProvider('session');
+        $cart = LaravelMultiCart::cart('shopping', CartProvider::SESSION);
+        $convertedCart = $cart->convertToProvider(CartProvider::SESSION->value);
 
         expect($convertedCart)->toBe($cart);
     });

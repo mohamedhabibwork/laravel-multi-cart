@@ -102,6 +102,29 @@ class FileCartProvider implements CartProviderInterface
         return true;
     }
 
+    public function getAllNames(): array
+    {
+        $files = $this->files->glob($this->path.'/*.json');
+        $cartNames = [];
+
+        foreach ($files as $file) {
+            $content = $this->files->get($file);
+            $data = json_decode($content, true);
+
+            // Skip expired files
+            if (isset($data['expires_at']) && $data['expires_at'] < time()) {
+                continue;
+            }
+
+            // Extract cart name from stored data
+            if (isset($data['data']['name'])) {
+                $cartNames[] = $data['data']['name'];
+            }
+        }
+
+        return $cartNames;
+    }
+
     protected function getFilePath(string $cartName): string
     {
         return $this->path.'/'.md5($cartName).'.json';

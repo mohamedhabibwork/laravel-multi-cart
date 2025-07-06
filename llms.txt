@@ -10,7 +10,9 @@ PACKAGE OVERVIEW
 Laravel Multi-Cart is a modern, flexible shopping cart package for Laravel 11+ and PHP 8.2+ that provides:
 
 - Multiple named cart instances (shopping, wishlist, favorites, etc.)
+- **CartProvider enum** for type-safe provider selection
 - Configurable storage providers (session, cache, database, Redis, file)
+- **Enhanced provider conversion** with merging capabilities
 - Polymorphic relationships with any Eloquent model
 - Advanced tax and shipping calculations
 - PHP 8+ attributes for configuration
@@ -124,21 +126,138 @@ return [
 ```
 
 ========================================
-BASIC USAGE PATTERNS
+CARTPROVIDER ENUM
 ========================================
 
-TITLE: Basic Cart Operations
-DESCRIPTION: Fundamental cart operations including creating carts, adding items, and managing cart contents.
+TITLE: CartProvider Enum for Type-Safe Provider Selection
+DESCRIPTION: Using the CartProvider enum for type-safe provider selection and enhanced functionality.
 LANGUAGE: php
 
 ```php
+use HCart\LaravelMultiCart\Enums\CartProvider;
 use HCart\LaravelMultiCart\Facades\LaravelMultiCart;
 
-// Get or create a cart
+// Available provider constants
+CartProvider::SESSION     // 'session' - Best for guest users
+CartProvider::CACHE       // 'cache' - High performance scenarios
+CartProvider::DATABASE    // 'database' - Persistent user carts
+CartProvider::REDIS       // 'redis' - Distributed applications
+CartProvider::FILE        // 'file' - Simple file-based storage
+
+// Get all available providers
+$providers = CartProvider::getAll(); // ['session', 'cache', 'database', 'redis', 'file']
+
+// Check provider capabilities
+$databaseProvider = CartProvider::DATABASE;
+echo $databaseProvider->getDisplayName();    // "Database"
+echo $databaseProvider->getDescription();    // "Persistent storage in database"
+echo $databaseProvider->isStateless();       // false
+echo $databaseProvider->isStateful();        // true
+echo $databaseProvider->supportsMerging();   // true
+
+// Create CartProvider from string
+$provider = CartProvider::fromString('database'); // CartProvider::DATABASE
+
+// Using enum in cart operations
+$cart = LaravelMultiCart::cart('shopping', CartProvider::SESSION);
+$dbCart = LaravelMultiCart::cart('wishlist', CartProvider::DATABASE);
+
+// Provider conversion with enum
+$convertedCart = $cart->convertToProvider(CartProvider::DATABASE);
+
+// Manager methods with enum support
+$manager = app(\HCart\LaravelMultiCart\Services\CartManager::class);
+$providerInfo = $manager->getProviderInfo(CartProvider::DATABASE);
+```
+
+========================================
+ENHANCED PROVIDER CONVERSION
+========================================
+
+TITLE: Advanced Provider Conversion with Merging
+DESCRIPTION: Enhanced convertToProvider functionality with user association and cart merging options.
+LANGUAGE: php
+
+```php
+use HCart\LaravelMultiCart\Enums\CartProvider;
+
+// Basic provider conversion
+$cart = LaravelMultiCart::cart('shopping', CartProvider::SESSION);
+$cart->add($product, 2);
+
+// Convert to database (automatically associates with user if authenticated)
+$dbCart = $cart->convertToProvider(CartProvider::DATABASE);
+
+// Enhanced conversion with options
+$options = [
+    'user_id' => auth()->id(),                    // Force specific user association
+    'user_type' => User::class,                   // Specify user model type
+    'merge_with_existing' => true,                // Merge with existing cart
+    'target_cart_name' => 'existing_cart',       // Specific cart to merge with
+    'merge_strategy' => 'combine_quantities',     // How to handle duplicates
+    'preserve_attributes' => true,                // Keep item attributes during merge
+];
+
+$convertedCart = $cart->convertToProvider(
+    CartProvider::DATABASE, 
+    $options
+);
+
+// Conversion scenarios
+// 1. Guest to authenticated user (session -> database)
+$guestCart = LaravelMultiCart::cart('guest_shopping', CartProvider::SESSION);
+$guestCart->add($product, 1);
+
+// User logs in
+$userCart = $guestCart->convertToProvider(CartProvider::DATABASE, [
+    'user_id' => auth()->id(),
+    'merge_with_existing' => true,
+]);
+
+// 2. Merge with existing database cart
+$sessionCart = LaravelMultiCart::cart('temp_cart', CartProvider::SESSION);
+$sessionCart->add($product, 2);
+
+$mergedCart = $sessionCart->convertToProvider(CartProvider::DATABASE, [
+    'merge_with_existing' => true,
+    'target_cart_name' => 'shopping',
+    'merge_strategy' => 'combine_quantities',
+]);
+
+// 3. High performance conversion (session/cache -> redis)
+$cacheCart = LaravelMultiCart::cart('high_traffic', CartProvider::CACHE);
+$redisCart = $cacheCart->convertToProvider(CartProvider::REDIS);
+
+// Get available carts for merging (database provider only)
+$availableCarts = $cart->getAvailableCartsForMerging();
+// Returns: [['name' => 'shopping', 'item_count' => 3], ['name' => 'wishlist', 'item_count' => 1]]
+
+// Check provider capabilities before conversion
+if (CartProvider::DATABASE->supportsMerging()) {
+    // Safe to use merging options
+    $converted = $cart->convertToProvider(CartProvider::DATABASE, [
+        'merge_with_existing' => true,
+    ]);
+}
+```
+
+========================================
+BASIC USAGE PATTERNS
+========================================
+
+TITLE: Basic Cart Operations with Enum Support
+DESCRIPTION: Fundamental cart operations using the CartProvider enum for type-safe operations.
+LANGUAGE: php
+
+```php
+use HCart\LaravelMultiCart\Enums\CartProvider;
+use HCart\LaravelMultiCart\Facades\LaravelMultiCart;
+
+// Get or create a cart (defaults to session)
 $cart = LaravelMultiCart::cart('shopping');
 
-// Create cart with specific provider
-$cart = LaravelMultiCart::cart('wishlist', 'database');
+// Create cart with specific provider using enum
+$cart = LaravelMultiCart::cart('wishlist', CartProvider::DATABASE);
 
 // Add items to cart
 $product = Product::find(1);
@@ -250,11 +369,11 @@ $user = auth()->user();
 // Create user-specific cart
 $cart = $user->createCart('shopping', ['currency' => 'EUR']);
 
-// Get user's cart
+// Get user's cart (uses default provider)
 $cart = $user->getCart('shopping');
 
-// Get cart with specific provider
-$cart = $user->getCart('wishlist', 'database');
+// Get cart with specific provider using enum
+$cart = $user->getCart('wishlist', CartProvider::DATABASE);
 
 // Check if user has cart
 if ($user->hasCart('favorites')) {
@@ -531,32 +650,67 @@ LaravelMultiCart::setConfig($config);
 STORAGE PROVIDERS
 ========================================
 
-TITLE: Using Different Storage Providers
-DESCRIPTION: Examples of using different storage providers for various use cases and performance requirements.
+TITLE: Using Different Storage Providers with Enum
+DESCRIPTION: Examples of using different storage providers with CartProvider enum for type-safe operations.
 LANGUAGE: php
 
 ```php
+use HCart\LaravelMultiCart\Enums\CartProvider;
+
 // Session Provider - Best for guest users
-$guestCart = LaravelMultiCart::cart('guest_cart', 'session');
+$guestCart = LaravelMultiCart::cart('guest_cart', CartProvider::SESSION);
 
 // Database Provider - Best for persistent user carts
-$userCart = LaravelMultiCart::cart('user_cart', 'database');
+$userCart = LaravelMultiCart::cart('user_cart', CartProvider::DATABASE);
 $userCart->forUser($user); // Associate with user
 
 // Cache Provider - Best for high-performance scenarios
-$fastCart = LaravelMultiCart::cart('fast_cart', 'cache');
+$fastCart = LaravelMultiCart::cart('fast_cart', CartProvider::CACHE);
 
 // Redis Provider - Best for distributed applications
-$distributedCart = LaravelMultiCart::cart('distributed_cart', 'redis');
+$distributedCart = LaravelMultiCart::cart('distributed_cart', CartProvider::REDIS);
 
 // File Provider - Best for simple applications
-$fileCart = LaravelMultiCart::cart('file_cart', 'file');
+$fileCart = LaravelMultiCart::cart('file_cart', CartProvider::FILE);
 
-// Convert between providers
-$convertedCart = $cart->convertToProvider('database');
+// Convert between providers using enum
+$convertedCart = $cart->convertToProvider(CartProvider::DATABASE);
 
-// Clone to different provider
-$clonedCart = $cart->clone('backup_cart', 'redis');
+// Clone to different provider using enum
+$clonedCart = $cart->clone('backup_cart', CartProvider::REDIS);
+
+// Advanced provider management
+$manager = app(\HCart\LaravelMultiCart\Services\CartManager::class);
+
+// Get all available providers
+$availableProviders = $manager->getAvailableProviders();
+// Returns: ['session', 'cache', 'database', 'redis', 'file']
+
+// Get provider information
+$info = $manager->getProviderInfo(CartProvider::DATABASE);
+/* Returns:
+[
+    'name' => 'database',
+    'display_name' => 'Database',
+    'description' => 'Persistent storage in database with relationships',
+    'is_stateless' => false,
+    'is_stateful' => true,
+    'supports_merging' => true,
+    'supports_user_association' => true,
+]
+*/
+
+// Check provider enum capabilities
+if (CartProvider::DATABASE->isStateful()) {
+    // Provider supports user associations and persistent storage
+    $cart = LaravelMultiCart::cart('persistent_cart', CartProvider::DATABASE);
+    $cart->forUser($user);
+}
+
+if (CartProvider::REDIS->isStateless()) {
+    // Provider is optimized for performance
+    $cart = LaravelMultiCart::cart('fast_cache', CartProvider::REDIS);
+}
 ```
 
 ========================================
@@ -793,12 +947,14 @@ class ShoppingCartController extends Controller
 }
 ```
 
-TITLE: Guest to User Cart Migration
-DESCRIPTION: Seamless migration of guest cart contents to user account upon login or registration.
+TITLE: Guest to User Cart Migration with Enhanced Conversion
+DESCRIPTION: Seamless migration using the enhanced convertToProvider functionality with automatic merging.
 LANGUAGE: php
 
 ```php
-// Guest to user cart migration
+use HCart\LaravelMultiCart\Enums\CartProvider;
+
+// Modern guest to user cart migration using convertToProvider
 class AuthController extends Controller
 {
     public function login(Request $request)
@@ -811,8 +967,8 @@ class AuthController extends Controller
         if (Auth::attempt($credentials)) {
             $user = Auth::user();
             
-            // Migrate guest cart to user cart
-            $this->migrateGuestCart($user);
+            // Modern migration using enhanced convertToProvider
+            $this->migrateGuestCartEnhanced($user);
             
             return redirect()->intended('/dashboard');
         }
@@ -822,17 +978,41 @@ class AuthController extends Controller
         ]);
     }
     
-    private function migrateGuestCart(User $user)
+    private function migrateGuestCartEnhanced(User $user)
     {
         // Get guest cart from session
-        $guestCart = LaravelMultiCart::cart('guest_shopping', 'session');
+        $guestCart = LaravelMultiCart::cart('guest_shopping', CartProvider::SESSION);
+        
+        if ($guestCart->count() === 0) {
+            return;
+        }
+        
+        // Convert and merge with user's database cart automatically
+        $userCart = $guestCart->convertToProvider(CartProvider::DATABASE, [
+            'user_id' => $user->id,
+            'user_type' => get_class($user),
+            'merge_with_existing' => true,
+            'target_cart_name' => 'shopping',
+            'merge_strategy' => 'combine_quantities',
+            'preserve_attributes' => true,
+        ]);
+        
+        // Guest session cart is automatically cleared after conversion
+        return $userCart;
+    }
+    
+    // Legacy migration method (for reference)
+    private function migrateGuestCartLegacy(User $user)
+    {
+        // Get guest cart from session
+        $guestCart = LaravelMultiCart::cart('guest_shopping', CartProvider::SESSION);
         
         if ($guestCart->count() === 0) {
             return;
         }
         
         // Get or create user cart
-        $userCart = $user->getCart('shopping', 'database');
+        $userCart = $user->getCart('shopping', CartProvider::DATABASE);
         
         // Merge guest cart into user cart
         $guestItems = $guestCart->items()->toArray();
@@ -850,6 +1030,18 @@ class AuthController extends Controller
         
         // Clear guest cart
         $guestCart->delete();
+    }
+    
+    // Alternative: Direct user cart methods with enhanced conversion
+    private function migrateUsingUserMethods(User $user)
+    {
+        // User trait method with enhanced conversion
+        $userCart = $user->convertCartToDatabase('guest_shopping', [
+            'merge_with_existing' => true,
+            'target_cart_name' => 'shopping',
+        ]);
+        
+        return $userCart;
     }
 }
 ```
@@ -1178,7 +1370,7 @@ trait HasCartsAPI
     public function getCartNames(): array;
     public function hasCart(string $name): bool;
     public function cloneCart(string $from, string $to, ?string $provider = null): CartService;
-    public function convertCartToProvider(string $cartName, string $provider): CartService;
+    public function convertCartToProvider(string $cartName, string|\HCart\LaravelMultiCart\Enums\CartProvider $provider): CartService;
 }
 
 // Cartable Trait Methods

@@ -16,25 +16,38 @@ class ItemAdded
 
     public int $quantity;
 
+    /** @var array<string, mixed> */
     public array $attributes;
 
-    public int|string|null $cartableId;
+    /** @var array<string, mixed> */
+    public array $itemData;
+
+    public int|string $cartableId;
 
     public string $cartableType;
 
     public float $price;
 
-    public array $itemData;
-
-    public function __construct(string $cartName, Model $cartable, int $quantity, array $attributes, array $itemData = [])
-    {
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @param  array<string, mixed>  $itemData
+     */
+    public function __construct(
+        string $cartName,
+        Model $cartable,
+        int $quantity,
+        array $attributes,
+        array $itemData = []
+    ) {
         $this->cartName = $cartName;
         $this->cartable = $cartable;
         $this->quantity = $quantity;
         $this->attributes = $attributes;
+        $this->itemData = $itemData;
         $this->cartableId = $cartable->getKey();
         $this->cartableType = get_class($cartable);
-        $this->price = method_exists($cartable, 'getCartPrice') ? $cartable->getCartPrice() : (float) $cartable->price;
-        $this->itemData = $itemData;
+        $this->price = method_exists($cartable, 'getCartPrice')
+            ? $cartable->getCartPrice()
+            : ($itemData['price'] ?? 0.0);
     }
 }

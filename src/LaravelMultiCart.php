@@ -3,6 +3,7 @@
 namespace HCart\LaravelMultiCart;
 
 use HCart\LaravelMultiCart\Contracts\CartConfigInterface;
+use HCart\LaravelMultiCart\Enums\CartProvider;
 use HCart\LaravelMultiCart\Services\CartManager;
 use HCart\LaravelMultiCart\Services\CartService;
 use Illuminate\Foundation\Application;
@@ -22,7 +23,7 @@ class LaravelMultiCart
     /**
      * Get or create a cart instance
      */
-    public function cart(string $name, ?string $provider = null): CartService
+    public function cart(string $name, string|null|CartProvider $provider = null): CartService
     {
         return $this->cartManager->cart($name, $provider);
     }
@@ -30,7 +31,7 @@ class LaravelMultiCart
     /**
      * Create a new cart instance
      */
-    public function create(string $name, array $config = [], ?string $provider = null): CartService
+    public function create(string $name, array $config = [], string|null|CartProvider $provider = null): CartService
     {
         return $this->cartManager->create($name, $config, $provider);
     }
@@ -38,7 +39,7 @@ class LaravelMultiCart
     /**
      * Create a new cart instance in strict mode (throws exception if exists)
      */
-    public function createStrict(string $name, array $config = [], ?string $provider = null): CartService
+    public function createStrict(string $name, array $config = [], string|null|CartProvider $provider = null): CartService
     {
         return $this->cartManager->createStrict($name, $config, $provider);
     }
@@ -46,7 +47,7 @@ class LaravelMultiCart
     /**
      * Delete a cart instance
      */
-    public function delete(string $name, ?string $provider = null): bool
+    public function delete(string $name, string|null|CartProvider $provider = null): bool
     {
         return $this->cartManager->delete($name, $provider);
     }
@@ -54,7 +55,7 @@ class LaravelMultiCart
     /**
      * Check if cart exists
      */
-    public function exists(string $name, ?string $provider = null): bool
+    public function exists(string $name, string|null|CartProvider $provider = null): bool
     {
         return $this->cartManager->exists($name, $provider);
     }
@@ -62,7 +63,7 @@ class LaravelMultiCart
     /**
      * Get all cart names
      */
-    public function getAllCartNames(?string $provider = null): array
+    public function getAllCartNames(string|null|CartProvider $provider = null): array
     {
         return $this->cartManager->getAllCartNames($provider);
     }
@@ -87,7 +88,7 @@ class LaravelMultiCart
     /**
      * Flush all carts from a provider
      */
-    public function flush(?string $provider = null): bool
+    public function flush(string|null|CartProvider $provider = null): bool
     {
         return $this->cartManager->flush($provider);
     }
