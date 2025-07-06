@@ -1,0 +1,1377 @@
+TITLE: Laravel Multi-Cart Package - Complete Documentation for LLM Training
+DESCRIPTION: Comprehensive documentation of the Laravel Multi-Cart package, a flexible shopping cart solution for Laravel applications with multiple cart instances, configurable storage providers, and advanced features.
+SOURCE: https://github.com/hcart/laravel-multi-cart
+LANGUAGE: Mixed (PHP, Bash, JSON, Configuration)
+
+========================================
+PACKAGE OVERVIEW
+========================================
+
+Laravel Multi-Cart is a modern, flexible shopping cart package for Laravel 11+ and PHP 8.2+ that provides:
+
+- Multiple named cart instances (shopping, wishlist, favorites, etc.)
+- Configurable storage providers (session, cache, database, Redis, file)
+- Polymorphic relationships with any Eloquent model
+- Advanced tax and shipping calculations
+- PHP 8+ attributes for configuration
+- Comprehensive event system
+- Bulk operations support
+- User integration with traits
+- Performance optimizations
+
+========================================
+INSTALLATION AND SETUP
+========================================
+
+TITLE: Install Laravel Multi-Cart Package
+DESCRIPTION: Complete installation process for the Laravel Multi-Cart package including Composer installation, configuration publishing, and database setup.
+LANGUAGE: bash
+
+```bash
+# Install via Composer
+composer require hcart/laravel-multi-cart
+
+# Publish configuration file
+php artisan vendor:publish --tag="laravel-multi-cart-config"
+
+# Publish and run migrations (for database provider)
+php artisan cart:publish-migrations
+php artisan migrate
+
+# Set environment variables
+echo "LARAVEL_MULTI_CART_PROVIDER=session" >> .env
+echo "LARAVEL_MULTI_CART_TAX_RATE=0.08" >> .env
+echo "LARAVEL_MULTI_CART_CURRENCY=USD" >> .env
+```
+
+========================================
+CONFIGURATION
+========================================
+
+TITLE: Laravel Multi-Cart Configuration File
+DESCRIPTION: Complete configuration file showing all available options for the Laravel Multi-Cart package including providers, models, callbacks, and cleanup settings.
+LANGUAGE: php
+
+```php
+<?php
+// config/laravel-multi-cart.php
+
+return [
+    // Default storage provider
+    'default' => env('LARAVEL_MULTI_CART_PROVIDER', 'session'),
+    
+    // Custom models (extend these for customization)
+    'models' => [
+        'cart' => \HCart\LaravelMultiCart\Models\Cart::class,
+        'cart_item' => \HCart\LaravelMultiCart\Models\CartItem::class,
+    ],
+    
+    // Configuration class
+    'config_class' => \HCart\LaravelMultiCart\Config\LaravelMultiCartConfig::class,
+    
+    // Behavioral callbacks
+    'callbacks' => [
+        // Custom item uniqueness logic
+        'unique_item' => null, // function($cartableId, $cartableType, $attributes) { return 'unique_key'; }
+        // Callback when item is updated
+        'item_update' => null, // function($cartItem, $oldData, $newData) { /* custom logic */ }
+        // Callback when item is removed
+        'item_remove' => null, // function($cartItem) { /* custom logic */ }
+    ],
+    
+    // Cart behavior settings
+    'prevent_duplicates' => true,
+    'tax_rate' => env('LARAVEL_MULTI_CART_TAX_RATE', 0.0),
+    'currency' => env('LARAVEL_MULTI_CART_CURRENCY', 'USD'),
+    
+    // Storage provider configurations
+    'providers' => [
+        'session' => [
+            'driver' => 'session',
+            'prefix' => 'laravel_multi_cart_'
+        ],
+        'cache' => [
+            'driver' => 'cache',
+            'store' => env('CACHE_DRIVER', 'file'),
+            'prefix' => 'laravel_multi_cart_',
+            'ttl' => 3600
+        ],
+        'database' => [
+            'driver' => 'database',
+            'connection' => env('DB_CONNECTION', 'mysql'),
+            'soft_deletes' => true
+        ],
+        'redis' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_CONNECTION', 'default'),
+            'prefix' => 'laravel_multi_cart_',
+            'ttl' => 3600
+        ],
+        'file' => [
+            'driver' => 'file',
+            'path' => storage_path('laravel_multi_cart'),
+            'ttl' => 3600
+        ]
+    ],
+    
+    // Automatic cleanup settings
+    'cleanup' => [
+        'enabled' => true,
+        'schedule' => 'daily',
+        'expire_after' => 168 // hours (7 days)
+    ]
+];
+```
+
+========================================
+BASIC USAGE PATTERNS
+========================================
+
+TITLE: Basic Cart Operations
+DESCRIPTION: Fundamental cart operations including creating carts, adding items, and managing cart contents.
+LANGUAGE: php
+
+```php
+use HCart\LaravelMultiCart\Facades\LaravelMultiCart;
+
+// Get or create a cart
+$cart = LaravelMultiCart::cart('shopping');
+
+// Create cart with specific provider
+$cart = LaravelMultiCart::cart('wishlist', 'database');
+
+// Add items to cart
+$product = Product::find(1);
+$cart->add($product, 2); // Add 2 quantities
+
+// Add with custom attributes
+$cart->add($product, 1, [
+    'size' => 'large',
+    'color' => 'red',
+    'gift_wrap' => true
+]);
+
+// Add with custom price
+$cart->add($product, 1, [], 19.99);
+
+// Get cart information
+$itemCount = $cart->count();
+$subtotal = $cart->subtotal();
+$tax = $cart->tax();
+$total = $cart->total();
+
+// Get all items
+$items = $cart->items();
+
+// Update item
+$cart->update($itemId, [
+    'quantity' => 5,
+    'price' => 24.99,
+    'attributes' => ['color' => 'blue']
+]);
+
+// Remove item
+$cart->remove($itemId);
+
+// Clear all items
+$cart->clear();
+
+// Delete cart
+$cart->delete();
+```
+
+TITLE: Bulk Operations
+DESCRIPTION: Adding multiple items to cart in a single operation for optimal performance.
+LANGUAGE: php
+
+```php
+// Bulk add items to cart
+$cart = LaravelMultiCart::cart('bulk_cart');
+$items = [
+    ['cartable' => $product1, 'quantity' => 2, 'attributes' => ['color' => 'red']],
+    ['cartable' => $product2, 'quantity' => 3, 'attributes' => ['color' => 'blue']],
+    ['cartable' => $product3, 'quantity' => 1, 'price' => 15.99], // Custom price
+];
+$cart->addBulk($items);
+
+// Advanced bulk operations with tax and shipping
+$items = [
+    [
+        'cartable' => $product1,
+        'quantity' => 3,
+        'price' => 12.99,
+        'attributes' => [
+            'color' => 'red',
+            'size' => 'large',
+            'tax_settings' => [
+                'type' => 'percentage',
+                'value' => 8.5,
+                'enabled' => true,
+            ],
+            'shipping_settings' => [
+                'type' => 'per_piece',
+                'value' => 4.0,
+                'pieces_per_shipping' => 2,
+                'max_shipping_charges' => 3,
+                'enabled' => true,
+            ],
+        ],
+    ],
+];
+$cart->addBulk($items);
+```
+
+========================================
+USER INTEGRATION
+========================================
+
+TITLE: User Model Integration with HasCarts Trait
+DESCRIPTION: Integrating the HasCarts trait into User models for seamless user-cart management.
+LANGUAGE: php
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use HCart\LaravelMultiCart\Traits\HasCarts;
+
+class User extends Authenticatable
+{
+    use HasCarts;
+    
+    // ... other model code
+}
+
+// Usage examples
+$user = auth()->user();
+
+// Create user-specific cart
+$cart = $user->createCart('shopping', ['currency' => 'EUR']);
+
+// Get user's cart
+$cart = $user->getCart('shopping');
+
+// Get cart with specific provider
+$cart = $user->getCart('wishlist', 'database');
+
+// Check if user has cart
+if ($user->hasCart('favorites')) {
+    $favorites = $user->getCart('favorites');
+}
+
+// Get all user cart names
+$cartNames = $user->getCartNames();
+
+// Clone user's cart
+$clonedCart = $user->cloneCart('shopping', 'shopping_backup');
+
+// Delete user cart
+$user->deleteCart('shopping');
+
+// Get user's carts relationship
+$userCarts = $user->carts; // Returns Eloquent collection
+```
+
+========================================
+CARTABLE ITEMS
+========================================
+
+TITLE: Product Model with Cartable Trait
+DESCRIPTION: Implementing the Cartable trait on models to make them cart-compatible with required methods.
+LANGUAGE: php
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use HCart\LaravelMultiCart\Traits\Cartable;
+
+class Product extends Model
+{
+    use Cartable;
+    
+    // Required method for cart integration
+    public function getCartPrice(): float
+    {
+        return (float) $this->price;
+    }
+    
+    // Optional: Custom cart name
+    public function getCartName(): string
+    {
+        return $this->name;
+    }
+    
+    // Optional: Additional attributes for cart
+    public function getCartAttributes(): array
+    {
+        return [
+            'sku' => $this->sku,
+            'weight' => $this->weight,
+        ];
+    }
+}
+
+// Usage with cartable items
+$product = Product::find(1);
+
+// Check if product is in any cart
+if ($product->isInCart()) {
+    // Product is in at least one cart
+}
+
+// Check if product is in specific cart
+if ($product->isInCart('wishlist')) {
+    // Product is in wishlist
+}
+
+// Get total quantity across all carts
+$totalQuantity = $product->getCartQuantity();
+
+// Get quantity in specific cart
+$wishlistQuantity = $product->getCartQuantity('wishlist');
+
+// Remove from all carts
+$product->removeFromCart();
+
+// Remove from specific cart
+$product->removeFromCart('shopping');
+```
+
+========================================
+PHP ATTRIBUTES FOR TAX AND SHIPPING
+========================================
+
+TITLE: PHP Attributes for Tax Configuration
+DESCRIPTION: Using PHP 8+ attributes to configure tax settings directly on model classes.
+LANGUAGE: php
+
+```php
+use HCart\LaravelMultiCart\Attributes\TaxConfiguration;
+
+#[TaxConfiguration(
+    rate: 0.08,
+    type: 'percentage',
+    included: false,
+    compound: false,
+    category: 'standard'
+)]
+class Product extends Model
+{
+    use Cartable;
+    
+    // Method-level attributes override class-level
+    #[TaxConfiguration(rate: 0.15, type: 'percentage')]
+    public function getTaxRate(): float
+    {
+        return 0.15;
+    }
+    
+    public function getCartPrice(): float
+    {
+        return $this->price;
+    }
+}
+```
+
+TITLE: PHP Attributes for Shipping Configuration
+DESCRIPTION: Using PHP 8+ attributes to configure shipping settings including piece-based shipping.
+LANGUAGE: php
+
+```php
+use HCart\LaravelMultiCart\Attributes\ShippingConfiguration;
+
+#[ShippingConfiguration(
+    cost: 5.99,
+    type: 'per_piece',
+    piecesPerShipping: 2,
+    maxShippingCharges: 3,
+    freeShippingThreshold: 100.0
+)]
+class Product extends Model
+{
+    use Cartable;
+    
+    public function getCartPrice(): float
+    {
+        return $this->price;
+    }
+}
+```
+
+========================================
+INTERFACE IMPLEMENTATIONS
+========================================
+
+TITLE: Implementing TaxableInterface and ShippableInterface
+DESCRIPTION: Advanced tax and shipping configuration using interface implementations for complex business logic.
+LANGUAGE: php
+
+```php
+use HCart\LaravelMultiCart\Contracts\TaxableInterface;
+use HCart\LaravelMultiCart\Contracts\ShippableInterface;
+
+class Product extends Model implements TaxableInterface, ShippableInterface
+{
+    use Cartable;
+    
+    // TaxableInterface implementation
+    public function getTaxSettings(): array
+    {
+        return [
+            'type' => 'percentage',
+            'value' => 8.5,
+            'included' => false,
+            'compound' => false,
+        ];
+    }
+    
+    public function getTaxRate(): float { return 8.5; }
+    public function getTaxType(): string { return 'percentage'; }
+    public function isTaxIncluded(): bool { return false; }
+    public function isCompoundTax(): bool { return false; }
+    public function getTaxCategory(): ?string { return 'standard'; }
+    
+    // ShippableInterface implementation
+    public function getShippingSettings(): array
+    {
+        return [
+            'type' => 'per_piece',
+            'value' => 5.0,
+            'pieces_per_shipping' => 2,
+            'max_shipping_charges' => 3,
+        ];
+    }
+    
+    public function getShippingCost(): float { return 5.0; }
+    public function getShippingType(): string { return 'per_piece'; }
+    public function isShippingIncluded(): bool { return false; }
+    public function getShippingWeight(): float { return 1.0; }
+    public function getShippingDimensions(): array
+    {
+        return ['length' => 10, 'width' => 8, 'height' => 5];
+    }
+    public function getShippingClass(): ?string { return 'standard'; }
+    public function getShippingZones(): array { return ['US', 'CA']; }
+    public function getPiecesPerShipping(): int { return 2; }
+    public function getMaxShippingCharges(): ?int { return 3; }
+    public function qualifiesForFreeShipping(float $cartTotal): bool
+    {
+        return $cartTotal >= 100.0;
+    }
+    
+    public function getCartPrice(): float { return $this->price; }
+}
+```
+
+========================================
+ADVANCED CONFIGURATION
+========================================
+
+TITLE: Custom Configuration with Callbacks
+DESCRIPTION: Advanced configuration using custom callbacks for item uniqueness, updates, and removals.
+LANGUAGE: php
+
+```php
+use HCart\LaravelMultiCart\Config\LaravelMultiCartConfig;
+
+$config = new LaravelMultiCartConfig([
+    'models' => [
+        'cart' => \App\Models\CustomCart::class,
+        'cart_item' => \App\Models\CustomCartItem::class,
+    ],
+    'callbacks' => [
+        'unique_item' => function ($cartableId, $cartableType, $attributes) {
+            // Include size and color in uniqueness
+            $uniqueKey = $cartableId . $cartableType;
+            if (isset($attributes['size'])) {
+                $uniqueKey .= $attributes['size'];
+            }
+            if (isset($attributes['color'])) {
+                $uniqueKey .= $attributes['color'];
+            }
+            return md5($uniqueKey);
+        },
+        'item_update' => function ($cartItem, $oldData, $newData) {
+            // Log item updates
+            \Log::info('Cart item updated', [
+                'cart_id' => $cartItem['cart_id'] ?? null,
+                'item_id' => $cartItem['id'],
+                'old_data' => $oldData,
+                'new_data' => $newData
+            ]);
+        },
+        'item_remove' => function ($cartItem) {
+            // Log item removals
+            \Log::info('Cart item removed', [
+                'cart_id' => $cartItem['cart_id'] ?? null,
+                'item_id' => $cartItem['id'],
+                'cartable_type' => $cartItem['cartable_type'],
+                'cartable_id' => $cartItem['cartable_id'],
+            ]);
+        },
+    ],
+    'prevent_duplicates' => true,
+    'tax_rate' => 0.08,
+    'currency' => 'EUR'
+]);
+
+// Apply configuration to specific cart
+$cart = LaravelMultiCart::cart('custom_cart')->withConfig($config);
+
+// Set global configuration
+LaravelMultiCart::setConfig($config);
+```
+
+========================================
+STORAGE PROVIDERS
+========================================
+
+TITLE: Using Different Storage Providers
+DESCRIPTION: Examples of using different storage providers for various use cases and performance requirements.
+LANGUAGE: php
+
+```php
+// Session Provider - Best for guest users
+$guestCart = LaravelMultiCart::cart('guest_cart', 'session');
+
+// Database Provider - Best for persistent user carts
+$userCart = LaravelMultiCart::cart('user_cart', 'database');
+$userCart->forUser($user); // Associate with user
+
+// Cache Provider - Best for high-performance scenarios
+$fastCart = LaravelMultiCart::cart('fast_cart', 'cache');
+
+// Redis Provider - Best for distributed applications
+$distributedCart = LaravelMultiCart::cart('distributed_cart', 'redis');
+
+// File Provider - Best for simple applications
+$fileCart = LaravelMultiCart::cart('file_cart', 'file');
+
+// Convert between providers
+$convertedCart = $cart->convertToProvider('database');
+
+// Clone to different provider
+$clonedCart = $cart->clone('backup_cart', 'redis');
+```
+
+========================================
+TAX AND SHIPPING CALCULATIONS
+========================================
+
+TITLE: Advanced Tax and Shipping Calculations
+DESCRIPTION: Complex tax and shipping calculations including piece-based shipping and various tax types.
+LANGUAGE: php
+
+```php
+// Piece-based shipping calculation
+$cart->add($product, 7, [
+    'shipping_settings' => [
+        'type' => 'per_piece',
+        'value' => 4.0,                    // Cost per shipping group
+        'pieces_per_shipping' => 2,        // Every 2 pieces = 1 shipping charge
+        'max_shipping_charges' => 3,       // Maximum 3 shipping charges
+        'enabled' => true,
+    ]
+]);
+// Calculation: ceil(7/2) = 4 groups, but max 3, so 3 × $4.0 = $12.0
+
+// Different shipping types
+$shippingConfigs = [
+    // Fixed shipping
+    'fixed' => [
+        'type' => 'fixed',
+        'value' => 9.99,
+    ],
+    
+    // Percentage-based shipping
+    'percentage' => [
+        'type' => 'percentage',
+        'value' => 5.0, // 5% of item price
+    ],
+    
+    // Weight-based shipping
+    'weight_based' => [
+        'type' => 'weight_based',
+        'base_rate' => 5.0,
+        'weight_rate' => 2.0,           // $2 per unit weight
+        'free_weight_threshold' => 10.0, // Free under 10 units
+    ],
+];
+
+// Tax calculations
+$taxConfigs = [
+    // Percentage tax
+    'percentage' => [
+        'type' => 'percentage',
+        'value' => 8.5,
+        'included' => false,
+        'compound' => false,
+    ],
+    
+    // Fixed tax
+    'fixed' => [
+        'type' => 'fixed',
+        'value' => 2.50,
+        'included' => false,
+    ],
+    
+    // Compound tax
+    'compound' => [
+        'type' => 'percentage',
+        'value' => 5.0,
+        'included' => false,
+        'compound' => true,
+    ],
+];
+
+// Get totals
+$subtotal = $cart->subtotal();
+$tax = $cart->totalTax();
+$shipping = $cart->totalShipping();
+$total = $cart->total();
+```
+
+========================================
+EVENT SYSTEM
+========================================
+
+TITLE: Cart and Item Events
+DESCRIPTION: Comprehensive event system for cart operations with event listeners and handlers.
+LANGUAGE: php
+
+```php
+// Available events
+$events = [
+    // Cart events
+    \HCart\LaravelMultiCart\Events\CartCreated::class,
+    \HCart\LaravelMultiCart\Events\CartUpdated::class,
+    \HCart\LaravelMultiCart\Events\CartDeleted::class,
+    
+    // Item events
+    \HCart\LaravelMultiCart\Events\ItemAdded::class,
+    \HCart\LaravelMultiCart\Events\ItemUpdated::class,
+    \HCart\LaravelMultiCart\Events\ItemRemoved::class,
+];
+
+// Event listener example
+<?php
+
+namespace App\Listeners;
+
+use HCart\LaravelMultiCart\Events\ItemAdded;
+
+class LogItemAdded
+{
+    public function handle(ItemAdded $event)
+    {
+        \Log::info('Item added to cart', [
+            'cart_name' => $event->cartName,
+            'cartable_type' => $event->cartableType,
+            'cartable_id' => $event->cartableId,
+            'quantity' => $event->quantity,
+            'price' => $event->price,
+            'attributes' => $event->attributes,
+        ]);
+    }
+}
+
+// Register in EventServiceProvider
+protected $listen = [
+    \HCart\LaravelMultiCart\Events\ItemAdded::class => [
+        \App\Listeners\LogItemAdded::class,
+    ],
+    \HCart\LaravelMultiCart\Events\CartCreated::class => [
+        \App\Listeners\SendCartCreatedNotification::class,
+    ],
+];
+```
+
+========================================
+ARTISAN COMMANDS
+========================================
+
+TITLE: Laravel Multi-Cart Artisan Commands
+DESCRIPTION: Available Artisan commands for cart management, cleanup, and provider migration.
+LANGUAGE: bash
+
+```bash
+# Cleanup expired carts
+php artisan cart:cleanup
+
+# Migrate between providers
+php artisan cart:migrate-provider session database
+
+# Force migration without confirmation
+php artisan cart:migrate-provider session database --force
+
+# Publish migrations
+php artisan cart:publish-migrations
+
+# Publish configuration
+php artisan vendor:publish --tag="laravel-multi-cart-config"
+
+# Publish all package assets
+php artisan vendor:publish --provider="HCart\LaravelMultiCart\LaravelMultiCartServiceProvider"
+```
+
+========================================
+REAL-WORLD EXAMPLES
+========================================
+
+TITLE: E-commerce Shopping Cart Implementation
+DESCRIPTION: Complete e-commerce shopping cart implementation with user authentication, checkout process, and order creation.
+LANGUAGE: php
+
+```php
+// E-commerce shopping cart workflow
+class ShoppingCartController extends Controller
+{
+    public function addToCart(Request $request)
+    {
+        $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'quantity' => 'required|integer|min:1',
+            'attributes' => 'sometimes|array',
+        ]);
+        
+        $product = Product::findOrFail($request->product_id);
+        $cart = auth()->user()->getCart('shopping', 'database');
+        
+        $cart->add($product, $request->quantity, $request->attributes ?? []);
+        
+        return response()->json([
+            'message' => 'Product added to cart',
+            'cart_count' => $cart->count(),
+            'cart_total' => $cart->total(),
+        ]);
+    }
+    
+    public function checkout(Request $request)
+    {
+        $user = auth()->user();
+        $cart = $user->getCart('shopping', 'database');
+        
+        if ($cart->count() === 0) {
+            return redirect()->back()->with('error', 'Cart is empty');
+        }
+        
+        DB::transaction(function () use ($cart, $user) {
+            // Create order
+            $order = Order::create([
+                'user_id' => $user->id,
+                'subtotal' => $cart->subtotal(),
+                'tax' => $cart->totalTax(),
+                'shipping' => $cart->totalShipping(),
+                'total' => $cart->total(),
+                'status' => 'pending',
+            ]);
+            
+            // Add order items
+            foreach ($cart->items() as $item) {
+                $order->items()->create([
+                    'product_id' => $item['cartable_id'],
+                    'quantity' => $item['quantity'],
+                    'price' => $item['price'],
+                    'attributes' => $item['attributes'],
+                ]);
+            }
+            
+            // Clear cart after successful order
+            $cart->clear();
+            
+            // Send confirmation email
+            Mail::to($user)->send(new OrderConfirmation($order));
+        });
+        
+        return redirect()->route('orders.show', $order);
+    }
+}
+```
+
+TITLE: Guest to User Cart Migration
+DESCRIPTION: Seamless migration of guest cart contents to user account upon login or registration.
+LANGUAGE: php
+
+```php
+// Guest to user cart migration
+class AuthController extends Controller
+{
+    public function login(Request $request)
+    {
+        $credentials = $request->validate([
+            'email' => 'required|email',
+            'password' => 'required',
+        ]);
+        
+        if (Auth::attempt($credentials)) {
+            $user = Auth::user();
+            
+            // Migrate guest cart to user cart
+            $this->migrateGuestCart($user);
+            
+            return redirect()->intended('/dashboard');
+        }
+        
+        return back()->withErrors([
+            'email' => 'The provided credentials do not match our records.',
+        ]);
+    }
+    
+    private function migrateGuestCart(User $user)
+    {
+        // Get guest cart from session
+        $guestCart = LaravelMultiCart::cart('guest_shopping', 'session');
+        
+        if ($guestCart->count() === 0) {
+            return;
+        }
+        
+        // Get or create user cart
+        $userCart = $user->getCart('shopping', 'database');
+        
+        // Merge guest cart into user cart
+        $guestItems = $guestCart->items()->toArray();
+        $userCart->addBulk(array_map(function ($item) {
+            $cartableModel = $item['cartable_type'];
+            $cartable = $cartableModel::find($item['cartable_id']);
+            
+            return [
+                'cartable' => $cartable,
+                'quantity' => $item['quantity'],
+                'price' => $item['price'],
+                'attributes' => $item['attributes'],
+            ];
+        }, $guestItems));
+        
+        // Clear guest cart
+        $guestCart->delete();
+    }
+}
+```
+
+TITLE: Multi-tenant Cart System
+DESCRIPTION: Implementation of multi-tenant cart system with tenant isolation and custom configuration.
+LANGUAGE: php
+
+```php
+// Multi-tenant cart implementation
+class TenantCartService
+{
+    public function getCartForTenant(string $cartName, int $tenantId): CartService
+    {
+        $config = new LaravelMultiCartConfig([
+            'callbacks' => [
+                'unique_item' => function ($cartableId, $cartableType, $attributes) use ($tenantId) {
+                    // Include tenant ID in uniqueness calculation
+                    $uniqueKey = $tenantId . $cartableId . $cartableType;
+                    if (!empty($attributes)) {
+                        ksort($attributes);
+                        $uniqueKey .= json_encode($attributes);
+                    }
+                    return md5($uniqueKey);
+                },
+            ],
+            'tax_rate' => $this->getTenantTaxRate($tenantId),
+            'currency' => $this->getTenantCurrency($tenantId),
+        ]);
+        
+        return LaravelMultiCart::cart($cartName . '_tenant_' . $tenantId, 'database')
+            ->withConfig($config);
+    }
+    
+    private function getTenantTaxRate(int $tenantId): float
+    {
+        return Tenant::find($tenantId)->tax_rate ?? 0.0;
+    }
+    
+    private function getTenantCurrency(int $tenantId): string
+    {
+        return Tenant::find($tenantId)->currency ?? 'USD';
+    }
+}
+
+// Usage in controller
+class TenantCartController extends Controller
+{
+    public function addToCart(Request $request, TenantCartService $cartService)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $cart = $cartService->getCartForTenant('shopping', $tenantId);
+        
+        $product = Product::where('tenant_id', $tenantId)
+            ->findOrFail($request->product_id);
+        
+        $cart->add($product, $request->quantity, $request->attributes ?? []);
+        
+        return response()->json(['success' => true]);
+    }
+}
+```
+
+========================================
+PERFORMANCE OPTIMIZATION
+========================================
+
+TITLE: Performance Optimization Strategies
+DESCRIPTION: Best practices and optimization strategies for high-performance cart operations.
+LANGUAGE: php
+
+```php
+// Performance optimization examples
+
+// 1. Use appropriate storage provider
+// For high-traffic applications, use Redis or Cache
+$cart = LaravelMultiCart::cart('high_traffic_cart', 'redis');
+
+// 2. Bulk operations for multiple items
+$items = collect($productIds)->map(function ($productId) {
+    return [
+        'cartable' => Product::find($productId),
+        'quantity' => 1,
+        'attributes' => ['bulk_added' => true],
+    ];
+})->toArray();
+
+$cart->addBulk($items); // Single transaction, better performance
+
+// 3. Eager loading for cart items with relationships
+$cart = LaravelMultiCart::cart('optimized_cart', 'database');
+$items = $cart->items()->with('cartable')->get();
+
+// 4. Caching expensive calculations
+$cacheKey = "cart_total_{$cart->getName()}_{$cart->getCartId()}";
+$total = Cache::remember($cacheKey, 300, function () use ($cart) {
+    return $cart->total();
+});
+
+// 5. Database query optimization
+// Use database provider with proper indexing
+Schema::table('carts', function (Blueprint $table) {
+    $table->index(['name', 'user_id']);
+    $table->index(['session_id']);
+    $table->index(['expires_at']);
+});
+
+Schema::table('cart_items', function (Blueprint $table) {
+    $table->index(['cart_id']);
+    $table->index(['cartable_id', 'cartable_type']);
+});
+```
+
+========================================
+TESTING EXAMPLES
+========================================
+
+TITLE: Comprehensive Testing Examples
+DESCRIPTION: Examples of testing cart functionality including unit tests, integration tests, and feature tests.
+LANGUAGE: php
+
+```php
+// Feature test example
+class CartFeatureTest extends TestCase
+{
+    use RefreshDatabase;
+    
+    public function test_user_can_add_items_to_cart()
+    {
+        $user = User::factory()->create();
+        $product = Product::factory()->create(['price' => 19.99]);
+        
+        $this->actingAs($user)
+            ->postJson('/api/cart/add', [
+                'product_id' => $product->id,
+                'quantity' => 2,
+                'attributes' => ['color' => 'red'],
+            ])
+            ->assertJson([
+                'message' => 'Product added to cart',
+                'cart_count' => 2,
+            ]);
+        
+        $cart = $user->getCart('shopping');
+        $this->assertEquals(2, $cart->count());
+        $this->assertEquals(39.98, $cart->subtotal());
+    }
+    
+    public function test_guest_cart_migrates_to_user_on_login()
+    {
+        $product = Product::factory()->create();
+        
+        // Add to guest cart
+        $guestCart = LaravelMultiCart::cart('guest_shopping', 'session');
+        $guestCart->add($product, 1);
+        
+        // Create and login user
+        $user = User::factory()->create();
+        $this->actingAs($user);
+        
+        // Simulate cart migration
+        $userCart = $user->getCart('shopping', 'database');
+        foreach ($guestCart->items() as $item) {
+            $userCart->add($product, $item['quantity']);
+        }
+        
+        $this->assertEquals(1, $userCart->count());
+        $guestCart->delete();
+    }
+}
+
+// Unit test example
+class CartServiceTest extends TestCase
+{
+    public function test_cart_calculates_totals_correctly()
+    {
+        $cart = LaravelMultiCart::cart('test_cart');
+        $product = new Product(['id' => 1, 'price' => 10.00]);
+        
+        $cart->add($product, 2);
+        
+        $this->assertEquals(20.00, $cart->subtotal());
+        $this->assertEquals(0.00, $cart->tax()); // No tax configured
+        $this->assertEquals(20.00, $cart->total());
+    }
+    
+    public function test_bulk_add_handles_duplicates_correctly()
+    {
+        $cart = LaravelMultiCart::cart('bulk_test');
+        $product = new Product(['id' => 1, 'price' => 15.00]);
+        
+        $items = [
+            ['cartable' => $product, 'quantity' => 2, 'attributes' => ['color' => 'red']],
+            ['cartable' => $product, 'quantity' => 3, 'attributes' => ['color' => 'blue']],
+        ];
+        
+        $cart->addBulk($items);
+        
+        $this->assertEquals(2, $cart->items()->count()); // Two separate items
+        $this->assertEquals(5, $cart->count()); // Total quantity
+    }
+}
+```
+
+========================================
+DEPLOYMENT CHECKLIST
+========================================
+
+TITLE: Package Deployment Checklist
+DESCRIPTION: Complete checklist for deploying the Laravel Multi-Cart package including configuration, security, and performance considerations.
+LANGUAGE: markdown
+
+```markdown
+# Laravel Multi-Cart Package Deployment Checklist
+
+## Pre-Deployment
+- [ ] All tests passing (183 tests, 545 assertions)
+- [ ] Code coverage above 90%
+- [ ] PHPStan analysis passing
+- [ ] Code style checks passing
+- [ ] Documentation updated
+- [ ] Changelog updated
+- [ ] Version tagged in git
+
+## Configuration
+- [ ] Environment variables set
+- [ ] Storage provider configured
+- [ ] Database migrations published and run
+- [ ] Cache configuration optimized
+- [ ] Queue configuration for events (if needed)
+
+## Security
+- [ ] Input validation implemented
+- [ ] CSRF protection enabled
+- [ ] User authorization checks
+- [ ] Rate limiting configured
+- [ ] Sensitive data encrypted
+
+## Performance
+- [ ] Database indexes created
+- [ ] Caching strategy implemented
+- [ ] Query optimization verified
+- [ ] Memory usage profiled
+- [ ] Load testing completed
+
+## Monitoring
+- [ ] Error tracking configured
+- [ ] Performance monitoring setup
+- [ ] Log levels configured
+- [ ] Health checks implemented
+- [ ] Backup strategy in place
+
+## Post-Deployment
+- [ ] Smoke tests executed
+- [ ] Performance metrics baseline
+- [ ] Documentation accessible
+- [ ] Support channels established
+- [ ] Rollback plan tested
+```
+
+========================================
+API REFERENCE
+========================================
+
+TITLE: Complete API Reference
+DESCRIPTION: Comprehensive API reference for all public methods and interfaces in the Laravel Multi-Cart package.
+LANGUAGE: php
+
+```php
+// CartService API
+interface CartServiceAPI
+{
+    // Core operations
+    public function add(Model $cartable, int $quantity = 1, array $attributes = [], ?float $price = null): self;
+    public function addBulk(array $items): self;
+    public function update(string|int $itemId, array $data): self;
+    public function remove(string|int $itemId): bool;
+    public function clear(): bool;
+    
+    // Information methods
+    public function count(): int;
+    public function total(): float;
+    public function subtotal(): float;
+    public function tax(): float;
+    public function totalTax(): float;
+    public function totalShipping(): float;
+    public function items(): Collection;
+    public function get(string|int $itemId): ?array;
+    public function has(Model $cartable): bool;
+    public function quantity(Model $cartable): int;
+    
+    // Cart management
+    public function exists(): bool;
+    public function delete(): bool;
+    public function clone(string $newCartName, ?string $provider = null): self;
+    public function convertToProvider(string $newProvider): self;
+    
+    // Configuration
+    public function setConfig(array $config): self;
+    public function getConfig(): array;
+    public function withConfig(CartConfigInterface $config): self;
+    public function getCartConfig(): CartConfigInterface;
+    
+    // User association
+    public function forUser(Model $user): self;
+    public function forSession(string $sessionId): self;
+    public function getUser(): ?Model;
+    public function getCartId(): ?int;
+    
+    // Meta information
+    public function getName(): string;
+    public function getProvider(): string;
+    
+    // Tax and shipping
+    public function setItemTax(string|int $itemId, array $taxSettings): self;
+    public function setItemShipping(string|int $itemId, array $shippingSettings): self;
+}
+
+// HasCarts Trait Methods
+trait HasCartsAPI
+{
+    public function carts(): HasMany;
+    public function getCart(string $name, ?string $provider = null): CartService;
+    public function createCart(string $name, array $config = [], ?string $provider = null): CartService;
+    public function deleteCart(string $name): bool;
+    public function getCartNames(): array;
+    public function hasCart(string $name): bool;
+    public function cloneCart(string $from, string $to, ?string $provider = null): CartService;
+    public function convertCartToProvider(string $cartName, string $provider): CartService;
+}
+
+// Cartable Trait Methods
+trait CartableAPI
+{
+    public function cartItems(): MorphMany;
+    public function isInCart(?string $cartName = null): bool;
+    public function getCartQuantity(?string $cartName = null): int;
+    public function removeFromCart(?string $cartName = null): bool;
+    
+    // Required implementations
+    public function getCartPrice(): float;
+    public function getCartName(): string;
+    public function getCartAttributes(): array;
+}
+```
+
+========================================
+TROUBLESHOOTING
+========================================
+
+TITLE: Common Issues and Solutions
+DESCRIPTION: Common problems encountered when using the Laravel Multi-Cart package and their solutions.
+LANGUAGE: php
+
+```php
+// Common issues and solutions
+
+// Issue 1: Items not being treated as unique with different attributes
+// Solution: Configure custom unique callback
+$config = new LaravelMultiCartConfig([
+    'callbacks' => [
+        'unique_item' => function ($cartableId, $cartableType, $attributes) {
+            $uniqueKey = $cartableId . $cartableType;
+            if (!empty($attributes)) {
+                ksort($attributes);
+                $uniqueKey .= json_encode($attributes);
+            }
+            return md5($uniqueKey);
+        },
+    ],
+]);
+
+// Issue 2: Database provider not persisting user association
+// Solution: Ensure proper user association
+$cart = LaravelMultiCart::cart('shopping', 'database');
+$cart->forUser(auth()->user()); // Important: Associate with user
+
+// Issue 3: Tax/shipping not calculating correctly
+// Solution: Verify interface implementations or attribute configurations
+class Product implements TaxableInterface, ShippableInterface
+{
+    // Implement all required methods
+    public function getTaxRate(): float { return 0.08; }
+    public function getShippingCost(): float { return 5.99; }
+    // ... other methods
+}
+
+// Issue 4: Performance issues with large carts
+// Solution: Use appropriate provider and bulk operations
+$cart = LaravelMultiCart::cart('large_cart', 'redis'); // Use Redis for performance
+$cart->addBulk($items); // Use bulk operations
+
+// Issue 5: Events not firing
+// Solution: Ensure event listeners are registered
+// In EventServiceProvider
+protected $listen = [
+    \HCart\LaravelMultiCart\Events\ItemAdded::class => [
+        \App\Listeners\LogItemAdded::class,
+    ],
+];
+
+// Issue 6: Configuration not persisting
+// Solution: Use database provider for persistent configuration
+$cart = LaravelMultiCart::cart('persistent_cart', 'database');
+$cart->setConfig(['tax_rate' => 0.10]); // Will persist in database
+```
+
+========================================
+PACKAGE INFORMATION
+========================================
+
+TITLE: Package Metadata and Requirements
+DESCRIPTION: Complete package information including requirements, dependencies, and installation details.
+LANGUAGE: json
+
+```json
+{
+  "name": "hcart/laravel-multi-cart",
+  "description": "A flexible, extensible shopping cart solution for Laravel applications with multiple cart instances and configurable storage providers",
+  "keywords": ["laravel", "cart", "shopping-cart", "e-commerce", "multi-cart"],
+  "homepage": "https://github.com/hcart/laravel-multi-cart",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "HCart Team",
+      "email": "team@hcart.dev"
+    }
+  ],
+  "require": {
+    "php": "^8.2",
+    "laravel/framework": "^11.0",
+    "illuminate/support": "^11.0",
+    "illuminate/database": "^11.0",
+    "illuminate/cache": "^11.0"
+  },
+  "require-dev": {
+    "pestphp/pest": "^3.0",
+    "pestphp/pest-plugin-arch": "^3.0",
+    "pestphp/pest-plugin-laravel": "^3.0",
+    "orchestra/testbench": "^9.0",
+    "phpstan/phpstan": "^1.10"
+  },
+  "autoload": {
+    "psr-4": {
+      "HCart\\LaravelMultiCart\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "HCart\\LaravelMultiCart\\Tests\\": "tests/"
+    }
+  },
+  "extra": {
+    "laravel": {
+      "providers": [
+        "HCart\\LaravelMultiCart\\LaravelMultiCartServiceProvider"
+      ],
+      "aliases": {
+        "LaravelMultiCart": "HCart\\LaravelMultiCart\\Facades\\LaravelMultiCart"
+      }
+    }
+  },
+  "minimum-stability": "dev",
+  "prefer-stable": true
+}
+```
+
+========================================
+CHANGELOG ENTRIES
+========================================
+
+TITLE: Recent Changelog Entries
+DESCRIPTION: Recent changes and improvements to the Laravel Multi-Cart package.
+LANGUAGE: markdown
+
+```markdown
+# Changelog
+
+## [1.0.0] - 2024-01-15
+
+### Added
+- Initial release of Laravel Multi-Cart package
+- Multiple cart instances support
+- Configurable storage providers (session, cache, database, Redis, file)
+- Polymorphic relationships with Eloquent models
+- PHP 8+ attributes for tax and shipping configuration
+- Comprehensive event system
+- Bulk operations support
+- User integration with HasCarts trait
+- Cartable trait for models
+- Advanced tax and shipping calculations
+- Piece-based shipping support
+- Custom configuration callbacks
+- Performance optimizations
+- Comprehensive test suite (183 tests, 545 assertions)
+- Complete documentation and examples
+
+### Features
+- Multi-provider cart system
+- Advanced tax calculations (percentage, fixed, compound)
+- Sophisticated shipping calculations (fixed, percentage, weight-based, piece-based)
+- Free shipping thresholds
+- Cart cloning and provider conversion
+- Automatic cleanup of expired carts
+- Event-driven architecture
+- Type-safe implementation
+- Modern PHP 8.2+ features
+- Laravel 11+ compatibility
+
+### Performance
+- Database query optimization
+- Bulk operation support
+- Efficient caching strategies
+- Memory usage optimization
+- Load testing verified
+
+### Security
+- Input validation
+- CSRF protection
+- User authorization
+- Data encryption support
+- Secure session handling
+```
+
+This comprehensive llms.txt file provides complete documentation of the Laravel Multi-Cart package suitable for LLM training, covering all features, usage patterns, examples, and best practices. 

@@ -57,6 +57,22 @@ class TestCase extends Orchestra
             $table->nullableMorphs('user');
             $table->string('session_id')->nullable();
             $table->timestampTz('expires_at')->nullable();
+
+            // Cart-level tax settings
+            $table->json('tax_settings')->nullable();
+
+            // Cart-level shipping settings
+            $table->json('shipping_settings')->nullable();
+
+            // Cart-level discount settings
+            $table->json('discount_settings')->nullable();
+
+            // Calculated amounts for cart (for performance)
+            $table->decimal('cart_tax_amount', 10, 2)->default(0.00);
+            $table->decimal('cart_shipping_amount', 10, 2)->default(0.00);
+            $table->decimal('cart_discount_amount', 10, 2)->default(0.00);
+            $table->decimal('cart_total_amount', 10, 2)->default(0.00);
+
             $table->timestampTz('created_at')->useCurrent();
             $table->timestampTz('updated_at')->useCurrent()->useCurrentOnUpdate();
             $table->softDeletesTz()->index();
@@ -74,6 +90,27 @@ class TestCase extends Orchestra
             $table->unsignedInteger('quantity')->default(1);
             $table->decimal('price', 10, 2)->default(0.00);
             $table->json('attributes')->default('{}');
+
+            // Discount settings
+            $table->json('discount_settings')->nullable();
+
+            // Tax settings
+            $table->json('tax_settings')->nullable();
+
+            // Shipping settings
+            $table->json('shipping_settings')->nullable();
+
+            // Piece-based shipping configuration
+            $table->unsignedInteger('pieces_per_shipping')->default(2);
+            $table->unsignedInteger('max_shipping_charges')->nullable(); // null means unlimited
+
+            // Calculated amounts (for performance)
+            $table->decimal('discount_amount', 10, 2)->default(0.00);
+            $table->decimal('tax_amount', 10, 2)->default(0.00);
+            $table->decimal('shipping_amount', 10, 2)->default(0.00);
+
+            // Total amount including all adjustments
+            $table->decimal('total_amount', 10, 2)->default(0.00);
             $table->timestampTz('created_at')->useCurrent();
             $table->timestampTz('updated_at')->useCurrent()->useCurrentOnUpdate();
             $table->softDeletesTz()->index();

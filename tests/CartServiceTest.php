@@ -250,3 +250,217 @@ describe('Cart Existence and Deletion', function () {
             ->and(LaravelMultiCart::exists('shopping'))->toBeFalse();
     });
 });
+
+describe('Cart Bulk Add and Advanced Config', function () {
+    it('can add multiple items in bulk', function () {
+        $cart = LaravelMultiCart::cart('bulk_cart');
+        $product1 = Product::create(['name' => 'Bulk 1', 'price' => 10, 'sku' => 'BULK-1']);
+        $product2 = Product::create(['name' => 'Bulk 2', 'price' => 20, 'sku' => 'BULK-2']);
+        $items = [
+            ['cartable' => $product1, 'quantity' => 2, 'attributes' => ['color' => 'red']],
+            ['cartable' => $product2, 'quantity' => 3, 'attributes' => ['color' => 'blue']],
+        ];
+        $cart->addBulk($items);
+        $cartItems = $cart->items();
+        expect($cartItems)->toHaveCount(2)
+            ->and($cart->count())->toBe(5)
+            ->and($cart->quantity($product1))->toBe(2)
+            ->and($cart->quantity($product2))->toBe(3);
+    });
+
+    it('applies per-item tax and shipping via interface', function () {
+        $cart = LaravelMultiCart::cart('tax_shipping_cart');
+        $product = new class extends Product implements \HCart\LaravelMultiCart\Contracts\ShippableInterface, \HCart\LaravelMultiCart\Contracts\TaxableInterface
+        {
+            public function getTaxSettings(): array
+            {
+                return ['type' => 'percentage', 'value' => 20.0];
+            }
+
+            public function getTaxRate(): float
+            {
+                return 0.2;
+            }
+
+            public function getTaxType(): string
+            {
+                return 'percentage';
+            }
+
+            public function isTaxIncluded(): bool
+            {
+                return false;
+            }
+
+            public function isCompoundTax(): bool
+            {
+                return false;
+            }
+
+            public function getTaxCategory(): ?string
+            {
+                return 'standard';
+            }
+
+            public function getShippingSettings(): array
+            {
+                return ['type' => 'per_piece', 'value' => 5.0, 'pieces_per_shipping' => 2, 'max_shipping_charges' => 2];
+            }
+
+            public function getShippingCost(): float
+            {
+                return 5.0;
+            }
+
+            public function getShippingType(): string
+            {
+                return 'per_piece';
+            }
+
+            public function isShippingIncluded(): bool
+            {
+                return false;
+            }
+
+            public function getShippingWeight(): float
+            {
+                return 1.0;
+            }
+
+            public function getShippingDimensions(): array
+            {
+                return ['length' => 1, 'width' => 1, 'height' => 1];
+            }
+
+            public function getShippingClass(): ?string
+            {
+                return null;
+            }
+
+            public function getShippingZones(): array
+            {
+                return [];
+            }
+
+            public function getPieceBasedShippingConfig(): array
+            {
+                return ['pieces_per_charge' => 2, 'charge_per_group' => 5.0, 'max_charges' => 2];
+            }
+
+            public function getPiecesPerShipping(): int
+            {
+                return 2;
+            }
+
+            public function getMaxShippingCharges(): ?int
+            {
+                return 2;
+            }
+
+            public function qualifiesForFreeShipping(float $cartTotal): bool
+            {
+                return false;
+            }
+        };
+        $product->name = 'TaxShip';
+        $product->price = 100;
+        $product->sku = 'TAXSHIP-1';
+        $product->save();
+        $cart->add($product, 4);
+        $items = $cart->items();
+        expect($items)->toHaveCount(1);
+        // Tax: 4*100*0.2 = 80, Shipping: 2 groups (4/2), max 2*5=10
+        expect($cart->tax())->toBe(80.0)
+            ->and($cart->totalShipping())->toBe(10.0);
+    });
+
+    it('applies cart-level tax and shipping via interface', function () {
+        $cart = LaravelMultiCart::cart('cart_level_tax_ship');
+
+        // Set cart-level tax and shipping via config instead of direct model manipulation
+        $cart->setConfig([
+            'tax' => ['type' => 'percentage', 'value' => 10.0, 'enabled' => true],
+            'shipping' => ['type' => 'fixed', 'value' => 7.5, 'enabled' => true],
+        ]);
+
+        $product = Product::create(['name' => 'CartLevel', 'price' => 50, 'sku' => 'CARTLVL-1']);
+        $cart->add($product, 2);
+
+        // Cart-level tax: 2*50*0.1 = 10, shipping: 7.5
+        expect($cart->tax())->toBe(10.0)
+            ->and($cart->totalShipping())->toBe(7.5);
+    });
+
+    it('applies piece-based shipping config (every 2 pieces, max 3 charges)', function () {
+        $cart = LaravelMultiCart::cart('piece_shipping');
+        $product = new class extends Product implements \HCart\LaravelMultiCart\Contracts\ShippableInterface
+        {
+            public function getShippingSettings(): array
+            {
+                return ['type' => 'per_piece', 'pieces_per_shipping' => 2, 'max_shipping_charges' => 3, 'value' => 4.0];
+            }
+
+            public function getShippingCost(): float
+            {
+                return 4.0;
+            }
+
+            public function getShippingType(): string
+            {
+                return 'per_piece';
+            }
+
+            public function isShippingIncluded(): bool
+            {
+                return false;
+            }
+
+            public function getShippingWeight(): float
+            {
+                return 1.0;
+            }
+
+            public function getShippingDimensions(): array
+            {
+                return ['length' => 1, 'width' => 1, 'height' => 1];
+            }
+
+            public function getShippingClass(): ?string
+            {
+                return null;
+            }
+
+            public function getShippingZones(): array
+            {
+                return [];
+            }
+
+            public function getPieceBasedShippingConfig(): array
+            {
+                return ['pieces_per_charge' => 2, 'charge_per_group' => 4.0, 'max_charges' => 3];
+            }
+
+            public function getPiecesPerShipping(): int
+            {
+                return 2;
+            }
+
+            public function getMaxShippingCharges(): ?int
+            {
+                return 3;
+            }
+
+            public function qualifiesForFreeShipping(float $cartTotal): bool
+            {
+                return false;
+            }
+        };
+        $product->name = 'PieceShip';
+        $product->price = 10;
+        $product->sku = 'PIECESHIP-1';
+        $product->save();
+        $cart->add($product, 7); // 7 pieces, 2 per charge, max 3 charges, 4.0 per charge
+        // Charges: ceil(7/2) = 4, but max 3, so 3*4.0 = 12.0
+        expect($cart->totalShipping())->toBe(12.0);
+    });
+});

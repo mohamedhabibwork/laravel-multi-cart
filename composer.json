@@ -1,6 +1,6 @@
 {
     "name": "hcart/laravel-multi-cart",
-    "description": "This is my package laravel-multi-cart",
+    "description": "A flexible, extensible shopping cart solution for Laravel applications with multiple cart instances and configurable storage providers",
     "keywords": [
         "HCart",
         "laravel",

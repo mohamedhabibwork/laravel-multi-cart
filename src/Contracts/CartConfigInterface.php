@@ -22,6 +22,12 @@ interface CartConfigInterface
 
     public function getItemRemoveCallback(): ?callable;
 
+    public function getDiscountSettings(): array;
+
+    public function getTaxSettings(): array;
+
+    public function getShippingSettings(): array;
+
     public function setConfig(array $config): self;
 
     public function getConfig(?string $key = null);

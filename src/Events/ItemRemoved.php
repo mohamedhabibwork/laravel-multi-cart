@@ -15,7 +15,7 @@ class ItemRemoved
 
     public array $itemData;
 
-    public int $cartableId;
+    public int|string|null $cartableId;
 
     public string $cartableType;
 

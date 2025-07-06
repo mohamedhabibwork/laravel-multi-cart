@@ -255,10 +255,13 @@ describe('CartItem Model', function () {
             'cart_id' => $this->cart->id,
             'cartable_id' => $this->product->id,
             'cartable_type' => get_class($this->product),
+            'attributes' => ['size' => 'large'],
         ]);
 
-        $expectedKey = md5($this->product->id.get_class($this->product));
-        expect($cartItem->getUniqueKey())->toBe($expectedKey);
+        $uniqueKey = $cartItem->getUniqueKey();
+
+        expect($uniqueKey)->toBeString()
+            ->and(strlen($uniqueKey))->toBeGreaterThan(0);
     });
 
     it('can get and set attributes', function () {

@@ -81,6 +81,85 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Discount Settings
+    |--------------------------------------------------------------------------
+    |
+    | Configure default discount behavior for all carts.
+    |
+    */
+
+    'discount' => [
+        'enabled' => true,
+        'type' => env('LARAVEL_MULTI_CART_DISCOUNT_TYPE', 'percentage'), // 'percentage', 'fixed', or 'tiered'
+        'value' => env('LARAVEL_MULTI_CART_DISCOUNT_VALUE', 0.0),
+        'included' => env('LARAVEL_MULTI_CART_DISCOUNT_INCLUDED', false), // true if discount is already included in price
+        'per_item' => env('LARAVEL_MULTI_CART_DISCOUNT_PER_ITEM', false), // true if discount can be applied per item
+        'minimum_amount' => env('LARAVEL_MULTI_CART_DISCOUNT_MIN_AMOUNT', null), // minimum cart amount for discount to apply
+        'maximum_amount' => env('LARAVEL_MULTI_CART_DISCOUNT_MAX_AMOUNT', null), // maximum discount amount
+
+        // Tiered discount settings
+        'tiers' => [
+            // Example: 5% off for 10+ items, 10% off for 20+ items
+            // [
+            //     'min_quantity' => 10,
+            //     'type' => 'percentage',
+            //     'value' => 5.0
+            // ],
+            // [
+            //     'min_quantity' => 20,
+            //     'type' => 'percentage',
+            //     'value' => 10.0
+            // ]
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tax Settings
+    |--------------------------------------------------------------------------
+    |
+    | Configure default tax behavior for all carts.
+    |
+    */
+
+    'tax' => [
+        'enabled' => true,
+        'type' => env('LARAVEL_MULTI_CART_TAX_TYPE', 'percentage'), // 'percentage' or 'fixed'
+        'value' => env('LARAVEL_MULTI_CART_TAX_VALUE', 0.0),
+        'included' => env('LARAVEL_MULTI_CART_TAX_INCLUDED', false), // true if tax is already included in price
+        'per_item' => env('LARAVEL_MULTI_CART_TAX_PER_ITEM', false), // true if tax can be applied per item
+        'compound' => env('LARAVEL_MULTI_CART_TAX_COMPOUND', false), // true if tax is calculated after discount
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Shipping Settings
+    |--------------------------------------------------------------------------
+    |
+    | Configure default shipping behavior for all carts.
+    |
+    */
+
+    'shipping' => [
+        'enabled' => true,
+        'type' => env('LARAVEL_MULTI_CART_SHIPPING_TYPE', 'fixed'), // 'percentage', 'fixed', 'per_piece', or 'weight_based'
+        'value' => env('LARAVEL_MULTI_CART_SHIPPING_VALUE', 0.0),
+        'included' => env('LARAVEL_MULTI_CART_SHIPPING_INCLUDED', false), // true if shipping is already included in price
+        'per_item' => env('LARAVEL_MULTI_CART_SHIPPING_PER_ITEM', false), // true if shipping can be applied per item
+        'free_shipping_threshold' => env('LARAVEL_MULTI_CART_FREE_SHIPPING_THRESHOLD', null), // minimum cart amount for free shipping
+
+        // Per-piece shipping settings
+        'pieces_per_shipping' => env('LARAVEL_MULTI_CART_PIECES_PER_SHIPPING', 2), // every X pieces gets shipping cost
+        'max_shipping_charges' => env('LARAVEL_MULTI_CART_MAX_SHIPPING_CHARGES', null), // null means unlimited charges
+
+        // Weight-based shipping settings
+        'base_rate' => env('LARAVEL_MULTI_CART_SHIPPING_BASE_RATE', 0.0), // base shipping cost
+        'weight_rate' => env('LARAVEL_MULTI_CART_SHIPPING_WEIGHT_RATE', 0.0), // cost per unit weight
+        'free_weight_threshold' => env('LARAVEL_MULTI_CART_FREE_WEIGHT_THRESHOLD', null), // free shipping under this weight
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Cart Providers
     |--------------------------------------------------------------------------
     |

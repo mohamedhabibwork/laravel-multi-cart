@@ -43,7 +43,7 @@ class LaravelMultiCartServiceProvider extends PackageServiceProvider
     public function packageRegistered(): void
     {
         // Register configuration
-        $this->app->singleton('LaravelMultiCart.config', function ($app) {
+        $this->app->bind('LaravelMultiCart.config', function ($app) {
             $configClass = config('laravel-multi-cart.config_class', LaravelMultiCartConfig::class);
 
             return new $configClass(config('laravel-multi-cart', []));
@@ -53,20 +53,25 @@ class LaravelMultiCartServiceProvider extends PackageServiceProvider
         $this->registerCartProviders();
 
         // Register services
-        $this->app->singleton(CartManager::class, function ($app) {
+        $this->app->bind(CartManager::class, function ($app) {
             return new CartManager($app);
         });
 
         $this->app->bind(CartService::class, function ($app) {
-            return new CartService($app[CartManager::class], $app['LaravelMultiCart.config']);
+            return new CartService(
+                $app[CartManager::class],
+                $app['LaravelMultiCart.config'],
+                'default',
+                'session'
+            );
         });
 
-        $this->app->singleton(ConfigurationService::class, function ($app) {
+        $this->app->bind(ConfigurationService::class, function ($app) {
             return new ConfigurationService($app['LaravelMultiCart.config']);
         });
 
         // Register main cart facade binding
-        $this->app->singleton('laravel-multi-cart', function ($app) {
+        $this->app->bind('laravel-multi-cart', function ($app) {
             return new LaravelMultiCart($app);
         });
     }

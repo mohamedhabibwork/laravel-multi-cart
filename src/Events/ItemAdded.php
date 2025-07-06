@@ -18,7 +18,7 @@ class ItemAdded
 
     public array $attributes;
 
-    public int $cartableId;
+    public int|string|null $cartableId;
 
     public string $cartableType;
 

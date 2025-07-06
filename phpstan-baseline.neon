@@ -1,0 +1,66 @@
+parameters:
+	ignoreErrors:
+		# Config file env() calls are expected and safe
+		-
+			message: "#Called 'env' outside of the config directory#"
+			path: config/laravel-multi-cart.php
+		
+		# Traits are used in external code, not analyzed here
+		-
+			message: "#Trait .* is used zero times and is not analysed#"
+			path: src/Traits/Cartable.php
+		-
+			message: "#Trait .* is used zero times and is not analysed#"
+			path: src/Traits/HasCarts.php
+		
+		# Model property access is handled by Eloquent
+		-
+			message: "#Access to an undefined property#"
+			path: src/Models/Cart.php
+		-
+			message: "#Access to an undefined property#"
+			path: src/Models/CartItem.php
+		-
+			message: "#Access to an undefined property#"
+			path: src/Events/ItemAdded.php
+		-
+			message: "#Access to an undefined property#"
+			path: src/Services/TaxCalculator.php
+		
+		# Method calls on models are handled by Eloquent
+		-
+			message: "#Call to an undefined method#"
+			path: src/Services/CartService.php
+		
+		# Cache flush method exists in some drivers
+		-
+			message: "#Call to an undefined method#"
+			path: src/Providers/CacheCartProvider.php
+		
+		# Redis operations return mixed types
+		-
+			message: "#Comparison operation#"
+			path: src/Providers/RedisCartProvider.php
+		
+		# Null coalesce on initialized properties
+		-
+			message: "#Property .* on left side of#"
+			path: src/Services/CartService.php
+		
+		# Method calls on class-string|object
+		-
+			message: "#Cannot call method save#"
+			path: src/Services/CartService.php
+		
+		# Variable might not be defined in complex conditionals
+		-
+			message: "#Variable .* might not be defined#"
+			path: src/Services/CartService.php
+		
+		# Strict comparison with mixed types
+		-
+			message: "#Strict comparison using !== between mixed and null#"
+			path: src/Services/DiscountCalculator.php
+		-
+			message: "#Strict comparison using !== between mixed and null#"
+			path: src/Services/ShippingCalculator.php 

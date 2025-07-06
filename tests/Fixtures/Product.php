@@ -9,7 +9,7 @@ class Product extends Model
 {
     use Cartable;
 
-    protected $fillable = ['name', 'price', 'sku'];
+    protected $fillable = ['id', 'name', 'price', 'sku'];
 
     protected $table = 'products';
 
