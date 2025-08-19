@@ -1,8 +1,8 @@
 # Laravel Multi-Cart Package
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/hcart/laravel-multi-cart.svg?style=flat-square)](https://packagist.org/packages/hcart/laravel-multi-cart)
-[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/hcart/laravel-multi-cart/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/hcart/laravel-multi-cart/actions?query=workflow%3Arun-tests+branch%3Amain)
-[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/hcart/laravel-multi-cart/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/hcart/laravel-multi-cart/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/mohamedhabibwork/laravel-multi-cart/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/mohamedhabibwork/laravel-multi-cart/actions?query=workflow%3Arun-tests+branch%3Amain)
+[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/mohamedhabibwork/laravel-multi-cart/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/mohamedhabibwork/laravel-multi-cart/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/hcart/laravel-multi-cart.svg?style=flat-square)](https://packagist.org/packages/hcart/laravel-multi-cart)
 
 A flexible, extensible shopping cart solution for Laravel applications that supports multiple cart instances with configurable storage providers. Built for Laravel v11+ and PHP 8.2+, it leverages modern Laravel features including polymorphic relationships and JSON configuration storage.
